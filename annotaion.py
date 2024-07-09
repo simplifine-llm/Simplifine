@@ -17,10 +17,10 @@ from openai import AsyncOpenAI
 class synthetic:
     def __init__(self):
         self.client = OpenAI(
-        api_key='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',
+        api_key='',
         )
         self.async_client = AsyncOpenAI(
-        api_key='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',
+        api_key='',
         )
         self.model_name = 'gpt-4o'
         self.script_path = os.path.dirname(os.path.abspath(__file__))
