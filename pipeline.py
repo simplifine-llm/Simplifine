@@ -26,7 +26,7 @@ class pincecone_db_man:
                 index_name:str='tt4',
                 namespace:str='tt5',
                 model_name:str='text-embedding-3-small',
-                openai_api_key:str='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'
+                openai_api_key:str=''
                 ):
         self.script_path = os.path.dirname(os.path.abspath(__file__))
         self.model_name = model_name
@@ -175,8 +175,8 @@ class piencone_db:
                  text:str='',
                  mode:str='text'
                  ) -> None:
-        pinecone_api = '2c2648f9-7438-4299-a868-aa1cb3dcd07f'
-        openai_api ='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'
+        pinecone_api = ''
+        openai_api =''
         model_name = 'text-embedding-3-small'
         self.path = path
 
