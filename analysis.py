@@ -10,7 +10,7 @@ import faiss
 class embedding:
     def __init__(self):
         self.client = OpenAI(
-        api_key='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',
+        api_key='',
         )
         self.model_name = 'text-embedding-3-large'
         self.script_path = os.path.dirname(os.path.abspath(__file__))
