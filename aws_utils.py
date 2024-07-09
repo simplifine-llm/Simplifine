@@ -28,7 +28,6 @@ class aws_toolkit:
 
 
 
-access_key = 'AKIA4HKHGA4QWELUUSOA'
-secret_key = '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'
+
 aws_bot = aws_toolkit(region_name='us-west-2', aws_access_key_id=access_key, aws_secret_access_key=secret_key)
 aws_bot.download_file_s3(bucket_name='simplifine-customer1', file_path='/Users/alikavoosi/Desktop/DEMO/newpdf.pdf', folder='data')
