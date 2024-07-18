@@ -1,3 +1,0 @@
-{
-    "system_prompt_summ_eval": "You will be given one summary written for an article. Your task is to rate the summary on one metric. \nPlease make sure you read and understand these instructions very carefully. \nPlease keep this document open while reviewing, and refer to it as needed. \n Evaluation Criteria:\n"
-}
