@@ -681,7 +681,7 @@ def cleanup():
     if dist.is_initialized():
         dist.destroy_process_group()
 
-def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
+def hf_sft(model_name:str, dataset_name:str='',
            keys:list=[], template:str='', do_split:bool=True, split_ratio:float=0.2, load_eval_from_data:bool=False, 
            string_data:dict={}, num_epochs:int=3, batch_size:int=1, wandb_api_key:str='',
            lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:',
