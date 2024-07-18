@@ -40,7 +40,7 @@ alpaca_template = """Below is an instruction that describes a task, paired with 
 alpaca_keys = ['instruction', 'input', 'output']
 
 print("Training model...")
-start = time.time()
+
 train_engine.hf_sft(
     model_name='unsloth/llama-3-8b-bnb-4bit',
     dataset_name='yahma/alpaca-cleaned',
@@ -56,8 +56,6 @@ train_engine.hf_sft(
     ddp=False,
     zero=True
 )
-end = time.time()
-print(f'Time taken to train: {(end - start) / 60} mins')
 ```
 
 ## 🤝 Contributing
