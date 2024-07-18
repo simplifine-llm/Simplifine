@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "simplifine-alpha"
+version = "0.0.7"
+authors = [
+  { name="Ali Kavoosi, Raveen Kariyawasam", email="founders@simplfine.com"}
+]
+description = "An easy to use, open-source LLM finetuning library that handles all the complexities of the process for you."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "accelerate",
+    "datasets",
+    "deepspeed",
+    "numpy",
+    "openai",
+    "peft",
+    "PyPDF2",
+    "requests",
+    "scikit_learn",
+    "sentence_transformers",
+    "torch",
+    "tqdm",
+    "transformers",
+    "trl",
+    "wandb",
+    "requests",
+    "setuptools",
+]
+
+[project.urls]
+Homepage = "https://github.com/simplifine-llm/Simplifine"
+Issues = "https://github.com/simplifine-llm/Simplifine/issues"
