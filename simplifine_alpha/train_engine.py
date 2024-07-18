@@ -721,7 +721,7 @@ def hf_sft(model_name:str, dataset_name:str='ali77sina/SEC-QA-sorted-chunks',
     Raises:
     -------
     ValueError
-        If both DDP and Zero optimization are set to True simultaneously.
+        If both DDP and Zero optimization are set to True simultaneously. only one dist method is accepted at once.
 
     Notes:
     ------
