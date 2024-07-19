@@ -16,7 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
 # from train_engine import *
-from train_engine_client import send_train_query
+from train_engine_client import send_train_query, get_company_status
 import uuid
 
 def clm_train_cloud(api_key:str='', job_name:str='',
@@ -137,3 +137,12 @@ def sft_train_cloud(api_key:str='', job_name:str='',
         }
     }
     send_train_query(config)
+
+
+def get_job_status(simplifine_token:str=''):
+    """
+    Function to get the status of a job.
+    This function returns all of the jobs under your API key.
+    """
+    company_job_data = get_company_status(api_key=simplifine_token)
+    return company_job_data
