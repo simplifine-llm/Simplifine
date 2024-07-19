@@ -101,6 +101,25 @@ def sft_train_cloud(api_key:str='', job_name:str='',
                     deepspeed_config:dict={}, gradient_accumulation_steps:int=1, 
                     from_hf:bool=True, peft_config:dict={}, train_test_split_ratio:float=0.8, use_zero:bool=False,
                     ):
+    """
+    Function to send the training query to the server. This is for supervised fine-tuning. 
+    args:
+        api_key: your simplifine API key/token
+        job_name: the name of the job
+        model_name: the name of the model to train. At this point, the only models accepted are from huggingface.
+        dataset_name: the name of the dataset to use
+        keys: the keys to use for the template
+        template: the template to use for the training
+        learning_rate: the learning rate for the training
+        num_train_epochs: the number of training epochs
+        batch_size: the batch size for training
+        use_ddp: whether to use distributed data parallelism
+        use_fp16: whether to use 16-bit floating point precision
+        use_deepspeed: whether to use deepspeed
+        use_peft: whether to use PEFT
+        use_gradient_checkpointing: whether to use gradient checkpointing
+
+    """
     job_id = str(uuid.uuid4())
     
     config = {
