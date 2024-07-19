@@ -217,18 +217,7 @@ def hf_finetune_embedder_contrastive(model_name:str, dataset_name:str='',
     """
     
     device_name = None
-    if torch.backends.mps.is_available():
-        print('Using MPS')
-        device = torch.device("mps")
-        device_name = 'mps'
-    elif torch.cuda.is_available():
-        print('Using CUDA')
-        device = torch.device("cuda")
-        device_name = 'cuda'
-    else:
-        print('Using CPU')
-        device = torch.device("cpu")
-        device_name = 'cpu'
+    device, deivce_name = init_device()
 
     # check if the model is available on the GPU, then implement flash attention 2
     if device_name == 'cuda':
@@ -379,21 +368,9 @@ def hf_finetune_embedder_positive(model_name:str, dataset_name:str='',
     Returns:
         None
     """
-        
-    print(f'================================================\nQuestions: {len(questions)}')
+    
     device_name = None
-    if torch.backends.mps.is_available():
-        print('Using MPS')
-        device = torch.device("mps")
-        device_name = 'mps'
-    elif torch.cuda.is_available():
-        print('Using CUDA')
-        device = torch.device("cuda")
-        device_name = 'cuda'
-    else:
-        print('Using CPU')
-        device = torch.device("cpu")
-        device_name = 'cpu'
+    device, deivce_name = init_device()
 
     # check if the model is available on the GPU, then implemenbt flash attention 2
     if torch.cuda.is_available():
@@ -932,15 +909,7 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     tokenizer.padding_side = "right"
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     
-    if torch.backends.mps.is_available():
-        print('Using MPS')
-        device = torch.device("mps")
-    elif torch.cuda.is_available():
-        print('Using CUDA')
-        device = torch.device("cuda")
-    else:
-        print('Using CPU')
-        device = torch.device("cpu")
+    device, deivce_name = init_device()
 
       
 
@@ -1070,16 +1039,7 @@ def hf_clf_multi_label_train(model_name:str, dataset_name:str='',
                  accelerator=None, apply_class_weights:bool=False,
                  num_labels:int=0):
 
-    if torch.backends.mps.is_available():
-        print('Using MPS')
-        device = torch.device("mps")
-    elif torch.cuda.is_available():
-        print('Using CUDA')
-        device = torch.device("cuda")
-        
-    else:
-        print('Using CPU')
-        device = torch.device("cpu")
+    device, deivce_name = init_device()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -1256,16 +1216,7 @@ Notes:
 - WandB integration (`use_wandb=True`) enables logging of training metrics and progress.
 """
 
-    if torch.backends.mps.is_available():
-        print('Using MPS')
-        device = torch.device("mps")
-    elif torch.cuda.is_available():
-        print('Using CUDA')
-        device = torch.device("cuda")
-        
-    else:
-        print('Using CPU')
-        device = torch.device("cpu")
+    device, deivce_name = init_device()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
