@@ -129,9 +129,3 @@ def get_company_status(api_key:str=''):
     except requests.exceptions.RequestException as e:
         # Handle any exceptions that occur during the request
         return {"error": str(e)}
-
-# TESTS
-if __name__ == '__main__':
-    query = {'content': 'hello', 'api_key': 'OmidNLPIE', 'job_name': 'test', 'type': 'clm', 'job_id': '1234'}
-    res = send_train_query(query)
-    print(res)
