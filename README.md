@@ -27,6 +27,11 @@ Or you can install the package from source. To do so, simply download the conten
 pip install .
 ```
 
+You can also directly install from github using the following command:
+```bash
+pip install git+https://github.com/simplifine-llm/Simplifine.git
+```
+
 ## 🏁 Quickstart
 ```python
 from simplifine_alpha import train_engine
