@@ -21,6 +21,12 @@ Simplifine lets you invoke LLM finetuning with just one line of code using any H
 pip install simplifine-alpha
 ```
 
+Or you can install the package from source. To do so, simply download the content of this repository and navigate to the installation folder and run the following command:
+
+```bash
+pip install .
+```
+
 ## 🏁 Quickstart
 ```python
 from simplifine_alpha import train_engine
