@@ -819,7 +819,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     
     # initialize the model
     model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
-    model.resize_token_embeddings(new_num_tokens=initial_token_count+added_token_count)
+    model.resize_token_embeddings(new_num_tokens=len(tokenizer))
 
     device, device_name = init_device()
     if torch.cuda.device_count() > 1:
