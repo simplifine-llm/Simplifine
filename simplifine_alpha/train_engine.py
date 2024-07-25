@@ -713,7 +713,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     - If DDP and Zero optimization are enabled, they cannot be used simultaneously due to conflicting configurations.
     """
     
-     # Ensure no default process group exists
+    # Ensure no default process group exists
     if dist.is_initialized():
         print("Destroying existing process group")
         dist.destroy_process_group()
@@ -772,12 +772,13 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
 
     def formatting_prompts_func(example):
         output_texts = []
+            
         if not tokenizer.chat_template:
-            for i in range(len(example[keys[0]])):
-                formatted_text = template.format(
-                    **{key: example[key][i] for key in keys}
-                )    
-            output_texts.append(formatted_text)
+                for i in range(len(example[keys[0]])):
+                    formatted_text = template.format(
+                        **{key: example[key][i] for key in keys}
+                    )
+                    output_texts.append(formatted_text)
         else:
             for i in range(len(example[keys[0]])):
                 formatted_text = template.format(
@@ -792,18 +793,19 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                 chat_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
                 output_texts.append(chat_prompt)
         
-        # Ensure the output_texts is a list of strings
         if not all(isinstance(text, str) for text in output_texts):
             raise ValueError("Formatted text must be a list of strings")
 
-        # Tokenize the output_texts correctly
         tokenized_output = tokenizer(output_texts, truncation=False, add_special_tokens=False)
+        
         return tokenized_output
 
     collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
     promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets['train'].column_names)
     promptTokenizedDataset = promptTokenizedDataset.shuffle(len(promptTokenizedDataset))
+
+    print(f'\n----------\n {promptTokenizedDataset} \n {raw_datasets} \n----------\n')
 
     if use_peft:
         if not peft_config:
@@ -914,7 +916,6 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             report_to=report_to,
                             remove_unused_columns=True
                                     )
-    print(f'########## saving to {raw_datasets}')
     trainer = SFTTrainer(
     model,
     tokenizer=tokenizer,
