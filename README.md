@@ -4,6 +4,14 @@
 
 Simplifine lets you invoke LLM finetuning with just one line of code using any Hugging Face dataset or model.
 
+## Updates
+## 🔄 Updates
+
+**v0.0.71 (2024-07-25)**
+- **Bug Fixes:** Resolved issues that prevented the library from loading on certain configurations.
+- **New Feature:** Added support for installing directly from git. Added support for Hugging Face API Tokens to access restricted models.
+- **Documentation:** Updated examples.
+
 ## 🚀 Features
 
 - **Supervised Fine Tuning** 🧑‍🏫
