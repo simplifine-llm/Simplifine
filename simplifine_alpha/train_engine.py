@@ -658,12 +658,12 @@ def cleanup():
     if dist.is_initialized():
         dist.destroy_process_group()
 
-def hf_sft(model_name:str, dataset_name:str='',
+def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
            keys:list=[], template:str='', do_split:bool=True, split_ratio:float=0.2, load_eval_from_data:bool=False, 
-           string_data:dict={}, num_epochs:int=3, batch_size:int=1, wandb_api_key:str='',
+           data:dict={}, num_epochs:int=3, batch_size:int=1, wandb_api_key:str='',
            lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:',
            use_peft:bool=False, peft_config=None, ddp:bool=False, zero:bool=True, deepspeed_config:str='home/ubuntu/src/zero_config.json',
-           hf_token:str='', gradient_accumulation_steps:int=1, fp16:bool=False, bf16:bool=False,
+           hf_token:str='', gradient_accumulation_steps:int=1, fp16:bool=False, bf16:bool=False, report_to:str='none',
             gradient_checkpointing:bool=False, max_seq_length:int=2048, use_wandb:bool=False, output_dir:str='sft_output'):
     
     """
@@ -713,37 +713,46 @@ def hf_sft(model_name:str, dataset_name:str='',
     - If DDP and Zero optimization are enabled, they cannot be used simultaneously due to conflicting configurations.
     """
     
+        # Ensure no default process group exists
+    if dist.is_initialized():
+        print("Destroying existing process group")
+        dist.destroy_process_group()
+    
+    # deepspeed config, fix this for the time being
+    deepspeed_config='home/ubuntu/src/zero_config.json'
+    
+    if response_template not in template:
+        raise ValueError('The response template must be in the template')
+    
     script_path = os.path.dirname(os.path.realpath(__file__))
     output_dir = os.path.join(script_path, output_dir)
     
     # init wandb
-    report_to = 'none'
-    if use_wandb:
+    if report_to == 'wandb':
         wandb.login(key=wandb_api_key)
         wandb.init(project="sft_train", config={"model_name": model_name,
                                                    'epochs': num_epochs})
-        report_to = 'wandb'
     
     # initialize the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
 
+
     # initialize the sft config
-    sft_config = SFTConfig(
-                fp16=fp16,
-                bf16=bf16,
-                output_dir="/tmp",
-                per_device_train_batch_size=batch_size,
-                per_device_eval_batch_size=batch_size,
-                num_train_epochs=num_epochs,
-                learning_rate=lr,
-                gradient_accumulation_steps=gradient_accumulation_steps,
-                gradient_checkpointing=gradient_checkpointing,
-                max_seq_length=max_seq_length,
-                report_to=report_to,
-                remove_unused_columns=False
-            )
+    # sft_config = SFTConfig(
+    #             fp16=fp16,
+    #             bf16=bf16,
+    #             output_dir=output_dir,
+    #             per_device_train_batch_size = batch_size,
+    #             per_device_eval_batch_size = batch_size,
+    #             num_train_epochs= num_epochs,
+    #             learning_rate=lr,
+    #             gradient_accumulation_steps=gradient_accumulation_steps,
+    #             gradient_checkpointing=gradient_checkpointing,
+    #             max_seq_length = max_seq_length,
+    #             report_to=report_to
+    #                     )
 
     if from_hf:
         try:
@@ -753,25 +762,47 @@ def hf_sft(model_name:str, dataset_name:str='',
             raw_datasets = load_dataset(dataset_name, token=False)
             raw_datasets = raw_datasets['train']
         if do_split:
-            raw_dataset = raw_datasets.train_test_split(split_ratio)
+            raw_datasets = raw_datasets.train_test_split(split_ratio)
     else:
-        raw_dataset = Dataset.from_dict(string_data)
+        raw_datasets = Dataset.from_dict(data)
         if do_split:
-            raw_dataset = raw_dataset.train_test_split(split_ratio)
+            raw_datasets = raw_datasets.train_test_split(split_ratio)
 
     def formatting_prompts_func(example):
         output_texts = []
-        for i in range(len(example[keys[0]])):
-            formatted_text = template.format(
-                **{key: example[key][i] for key in keys}
-            )
+        if not tokenizer.chat_template:
+            for i in range(len(example[keys[0]])):
+                formatted_text = template.format(
+                    **{key: example[key][i] for key in keys}
+                )    
             output_texts.append(formatted_text)
-        # return output_texts
-        return tokenizer(output_texts, truncation=False, add_special_tokens=False)
+        else:
+            for i in range(len(example[keys[0]])):
+                formatted_text = template.format(
+                    **{key: example[key][i] for key in keys}
+                )
+                user_text, assistant_text = formatted_text.split(response_template)
+                assistant_text = response_template + assistant_text
+                messages = [
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": assistant_text},
+                ]
+                chat_prompt = tokenizer.apply_chat_template(messages, tokenize=False)
+                output_texts.append(chat_prompt)
+        
+        # Ensure the output_texts is a list of strings
+        if not all(isinstance(text, str) for text in output_texts):
+            raise ValueError("Formatted text must be a list of strings")
+
+        # Tokenize the output_texts correctly
+        tokenized_output = tokenizer(output_texts, truncation=False, add_special_tokens=False)
+        return tokenized_output
+
+
     
     collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
-    promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets.column_names)
+    promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets['train'].column_names)
     promptTokenizedDataset = promptTokenizedDataset.shuffle(len(promptTokenizedDataset))
 
     if use_peft:
@@ -785,57 +816,115 @@ def hf_sft(model_name:str, dataset_name:str='',
             )
     
     # initialize the model
-    model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
+    model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
     device, device_name = init_device()
-    distributed = False
-
     if torch.cuda.device_count() > 1:
         if ddp and zero:
             raise ValueError('Zero optimization and DDP cannot be used together')
         if ddp:
             if not dist.is_initialized():
-                dist.init_process_group("nccl")
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
+                
             rank = dist.get_rank()
-            print(f"Start running basic DDP example on rank {rank}.")
             device_id = rank % torch.cuda.device_count()
             model = model.to(device_id)
             model = DDP(model, device_ids=[device_id])
             distributed = True
-        if zero:
             sft_config = SFTConfig(
                             output_dir=output_dir,
-                            deepspeed="/home/ubuntu/src/zero_config.json",
-                            per_device_train_batch_size=batch_size,
-                            per_device_eval_batch_size=batch_size,
-                            num_train_epochs=num_epochs,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
                             fp16=fp16,
                             bf16=bf16,
                             learning_rate=lr,
                             gradient_accumulation_steps=gradient_accumulation_steps,
                             gradient_checkpointing=gradient_checkpointing,
-                            max_seq_length=max_seq_length,
+                            max_seq_length = max_seq_length,
                             report_to=report_to,
                             remove_unused_columns=False
-                        )
+                                    )
+        elif zero:
+            # sft_config = SFTConfig(
+            #                 output_dir=output_dir,
+            #                 deepspeed='/home/ubuntu/src/zero_config.json',
+            #                 per_device_train_batch_size = batch_size,
+            #                 per_device_eval_batch_size = batch_size,
+            #                 num_train_epochs= num_epochs,
+            #                 fp16=fp16,
+            #                 bf16=bf16,
+            #                 learning_rate=lr,
+            #                 gradient_accumulation_steps=gradient_accumulation_steps,
+            #                 gradient_checkpointing=gradient_checkpointing,
+            #                 max_seq_length = max_seq_length,
+            #                 report_to=report_to
+            #                         )
+            sft_config = SFTConfig(
+                            output_dir="/home/ubuntu/src//tmp",
+                            deepspeed="/home/ubuntu/src/zero_config.json",
+                            per_device_train_batch_size = 1,
+                            per_device_eval_batch_size = 1,
+                            num_train_epochs= 1,
+                            fp16=True,
+                            learning_rate=2e-5,
+                            gradient_accumulation_steps=4,
+                            report_to='none',
+                            gradient_checkpointing=True,
+                            logging_dir="/home/ubuntu/src//chkp-pact",
+                            logging_steps=20,
+                            max_seq_length = max_seq_length,
+                            save_steps=50,
+                            eval_steps=1)
+        else:
+            sft_config = SFTConfig(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            max_seq_length = max_seq_length,
+                            report_to=report_to
+                                    )
     else:
         model.to(device)
-
+        distributed = False
+        if device_name == 'mps':
+            fp16 = False
+        sft_config = SFTConfig(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=False,
+                            bf16=False,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            max_seq_length = max_seq_length,
+                            report_to=report_to,
+                            remove_unused_columns=True
+                                    )
+    print(f'########## saving to {raw_datasets}')
     trainer = SFTTrainer(
-        model,
-        tokenizer=tokenizer,
-        train_dataset=promptTokenizedDataset,
-        args=sft_config,
-        formatting_func=formatting_prompts_func,
-        data_collator=collator,
+    model,
+    tokenizer=tokenizer,
+    train_dataset=promptTokenizedDataset['train'],
+    args=sft_config,
+    formatting_func=formatting_prompts_func,
+    data_collator=collator,
     )
 
+    trainer.train()
+
     if ddp:
-        try:
-            trainer.train()
-        finally:
-            cleanup()
-    if zero:
-        trainer.train()
+        dist.destroy_process_group()
 
     
 
