@@ -713,7 +713,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     - If DDP and Zero optimization are enabled, they cannot be used simultaneously due to conflicting configurations.
     """
     
-        # Ensure no default process group exists
+     # Ensure no default process group exists
     if dist.is_initialized():
         print("Destroying existing process group")
         dist.destroy_process_group()
@@ -737,6 +737,8 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
+    initial_token_count = len(tokenizer)
+    added_token_count = tokenizer.add_special_tokens({"additional_special_tokens": [response_template]})
 
 
     # initialize the sft config
@@ -787,7 +789,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                     {"role": "user", "content": user_text},
                     {"role": "assistant", "content": assistant_text},
                 ]
-                chat_prompt = tokenizer.apply_chat_template(messages, tokenize=False)
+                chat_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
                 output_texts.append(chat_prompt)
         
         # Ensure the output_texts is a list of strings
@@ -798,8 +800,6 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
         tokenized_output = tokenizer(output_texts, truncation=False, add_special_tokens=False)
         return tokenized_output
 
-
-    
     collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
 
     promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets['train'].column_names)
@@ -817,6 +817,8 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     
     # initialize the model
     model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
+    model.resize_token_embeddings(new_num_tokens=initial_token_count+added_token_count)
+
     device, device_name = init_device()
     if torch.cuda.device_count() > 1:
         if ddp and zero:
@@ -829,6 +831,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                 print("Process group already initialized")
                 
             rank = dist.get_rank()
+            print(f"Start running basic DDP example on rank {rank}.")
             device_id = rank % torch.cuda.device_count()
             model = model.to(device_id)
             model = DDP(model, device_ids=[device_id])
