@@ -16,18 +16,18 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
 # from train_engine import *
-from train_engine_client import send_train_query, get_company_status
+from train_engine_client import send_train_query, get_company_status, get_job_log
 import uuid
 
-def clm_train_cloud(api_key:str='', job_name:str='',
+def clm_train_cloud(api_key:str='', job_name:str='', distributed:bool=False,
                     model_name:str='', dataset_name:str='', 
                     learning_rate:float=1e-5, num_train_epochs:int=1, 
-                    batch_size:int=1, use_ddp:bool=False, 
+                    batch_size:int=1, use_ddp:bool=False, do_split:bool=True, split_ratio:float=0.2,
                     context_length:int=1024, use_zero:bool=False,
                     use_fp16:bool=False, use_deepspeed:bool=False, use_peft:bool=False,
                     use_gradient_checkpointing:bool=False, use_activation_checkpointing:bool=False,
                     huggingface_token:str='', train_test_split_ratio:float=0.8,
-                    prompt_template:str='', report_to:str='none',
+                    prompt_template:str='', report_to:str='none', hf_column:str='text',
                     deepspeed_config:dict={}, gradient_accumulation_steps:int=1, per_device_batch_size:int=1,
                     from_hf:bool=True, peft_config:dict={}):
     """
@@ -79,25 +79,28 @@ def clm_train_cloud(api_key:str='', job_name:str='',
             'huggingface_token': huggingface_token,
             'prompt_template': prompt_template,
             'report_to': report_to,
+            'do_split': do_split,
+            'split_ratio': split_ratio,
             'deepspeed_config': deepspeed_config,
             'gradient_accumulation_steps': gradient_accumulation_steps,
             'per_device_batch_size': per_device_batch_size,
             'from_hf': from_hf,
+            'distributed': distributed,
             'train_test_split_ratio':train_test_split_ratio,
-            'output_dir':f'/tmp/{job_id}'
+            'hf_column': hf_column
         }
     }
     send_train_query(config)
 
 def sft_train_cloud(api_key:str='', job_name:str='',
-                    model_name:str='', dataset_name:str='', 
+                    model_name:str='', dataset_name:str='', data:dict={},
                     keys:str='', template:str='', response_template:str='',
                     learning_rate:float=1e-5, num_train_epochs:int=1,  per_device_batch_size:int=1,
                     batch_size:int=1, use_ddp:bool=False,
                     use_fp16:bool=False, use_deepspeed:bool=False, use_peft:bool=False,
                     use_gradient_checkpointing:bool=False, use_activation_checkpointing:bool=False,
-                    huggingface_token:str='',
-                    prompt_template:str='', report_to:str='none',
+                    huggingface_token:str='', do_split:bool=True, split_ratio:float=0.2,
+                    prompt_template:str='', report_to:str='none', max_seq_length:int=2048,
                     deepspeed_config:dict={}, gradient_accumulation_steps:int=1, 
                     from_hf:bool=True, peft_config:dict={}, train_test_split_ratio:float=0.8, use_zero:bool=False,
                     ):
@@ -126,7 +129,7 @@ def sft_train_cloud(api_key:str='', job_name:str='',
         'api_key': api_key,
         'job_id': job_id,
         'job_name': job_name,
-        'type':'clm',
+        'type':'sft',
         'model_name':model_name,
         'dataset_name': dataset_name,
         'args': {
@@ -141,18 +144,21 @@ def sft_train_cloud(api_key:str='', job_name:str='',
             'use_zero': use_zero,
             'use_fp16': use_fp16,
             'use_deepspeed': use_deepspeed,
+            'do_split': do_split,
+            'split_ratio': split_ratio,
             'use_gradient_checkpointing': use_gradient_checkpointing,
             'use_activation_checkpointing': use_activation_checkpointing,
             'huggingface_token': huggingface_token,
             'response_template': response_template,
             'prompt_template': prompt_template,
+            'max_seq_length': max_seq_length,
             'report_to': report_to,
             'deepspeed_config': deepspeed_config,
             'gradient_accumulation_steps': gradient_accumulation_steps,
             'per_device_batch_size': per_device_batch_size,
             'from_hf': from_hf,
             'train_test_split_ratio':train_test_split_ratio,
-            'output_dir':f'/tmp/{job_id}'
+            'data': data
         }
     }
     send_train_query(config)
@@ -165,3 +171,16 @@ def get_job_status(simplifine_token:str=''):
     """
     company_job_data = get_company_status(api_key=simplifine_token)
     return company_job_data
+
+def get_all_jobs(api_key:str=''):
+    return get_company_status(api_key)['response']
+
+def get_status_id(api_key:str='', job_id:str=''):
+    all_jobs = get_company_status(api_key)['response']
+    for i in all_jobs:
+        if i['job_id'] == job_id:
+            return i['status']
+    raise Exception('Job ID not found')
+
+def get_train_logs(api_key:str='', job_id:str=''):
+    return get_job_log(api_key, job_id)

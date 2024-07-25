@@ -129,3 +129,19 @@ def get_company_status(api_key:str=''):
     except requests.exceptions.RequestException as e:
         # Handle any exceptions that occur during the request
         return {"error": str(e)}
+
+def get_job_log(api_key:str='', job_id:str=''):
+    url = _url
+    headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
+    payload = {'api_key':api_key, 'job_id':job_id} # Prepare the payload with the data list
+
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+        
+        # Return the JSON response from the server
+        return response.json()
+    
+    except requests.exceptions.RequestException as e:
+        # Handle any exceptions that occur during the request
+        return {"error": str(e)}
