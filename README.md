@@ -77,6 +77,8 @@ train_engine.hf_sft(
 )
 ```
 
+For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/sft_quick_start.ipynb) in the examples folder:
+
 ## 🤝 Contributing
 
 We are looking for contributors! Please send an email to [founders@simplifine.com](mailto:founders@simplifine.com) to get onboarded, or add your name to the waitlist on [www.simplifine.com](http://www.simplifine.com).
