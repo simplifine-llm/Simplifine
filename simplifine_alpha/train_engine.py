@@ -724,8 +724,8 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     if response_template not in template:
         raise ValueError('The response template must be in the template')
     
-    script_path = os.path.dirname(os.path.realpath(__file__))
-    output_dir = os.path.join(script_path, output_dir)
+    # script_path = os.path.dirname(os.path.realpath(__file__))
+    # output_dir = os.path.join(script_path, output_dir)
     
     # init wandb
     if report_to == 'wandb':
@@ -737,8 +737,8 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
-    initial_token_count = len(tokenizer)
-    added_token_count = tokenizer.add_special_tokens({"additional_special_tokens": [response_template]})
+    # initial_token_count = len(tokenizer)
+    # added_token_count = tokenizer.add_special_tokens({"additional_special_tokens": [response_template]})
 
 
     # initialize the sft config
@@ -805,8 +805,6 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets['train'].column_names)
     promptTokenizedDataset = promptTokenizedDataset.shuffle(len(promptTokenizedDataset))
 
-    print(f'\n----------\n {promptTokenizedDataset} \n {raw_datasets} \n----------\n')
-
     if use_peft:
         if not peft_config:
             peft_config = LoraConfig(
@@ -819,7 +817,6 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     
     # initialize the model
     model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
-    model.resize_token_embeddings(new_num_tokens=len(tokenizer))
 
     device, device_name = init_device()
     if torch.cuda.device_count() > 1:
