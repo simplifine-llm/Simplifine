@@ -16,7 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
 # from train_engine import *
-from train_engine_client import send_train_query, get_company_status, get_job_log
+from .train_engine_client import send_train_query, get_company_status, get_job_log
 import uuid
 
 def clm_train_cloud(api_key:str='', job_name:str='', distributed:bool=False,
