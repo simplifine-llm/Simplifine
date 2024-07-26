@@ -62,7 +62,6 @@ def send_train_query(query:dict={}):
     url = _url + '/query'
     headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
     payload = query # Prepare the payload with the data list
-    print('sending stuff', payload)
     try:
         response = requests.post(url, headers=headers, data=json.dumps(payload))
         response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
