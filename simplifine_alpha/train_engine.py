@@ -905,7 +905,12 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     data_collator=collator,
     )
 
-    trainer.train()
+    # creating a directory in ouput dir for final model saving
+    output_dir_final = os.path.join(output_dir, 'final_model')
+    if not os.path.exists(output_dir_final):
+        os.makedirs(output_dir_final)
+
+    trainer.save_model(output_dir_final)
 
     if ddp:
         dist.destroy_process_group()
