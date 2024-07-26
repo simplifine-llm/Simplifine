@@ -186,4 +186,5 @@ def get_train_logs(api_key:str='', job_id:str=''):
     return get_job_log(api_key, job_id)
 
 def download_model(api_key:str='', job_id:str='', save_path:str=''):
-    return download_directory(api_key, job_id, save_path)
+    download_directory(api_key, job_id, save_path)
+    print('Model downloaded successfully!')
