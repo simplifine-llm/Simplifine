@@ -18,6 +18,8 @@
 # from train_engine import *
 from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory
 import uuid
+import zipfile
+import os
 
 def clm_train_cloud(api_key:str='', job_name:str='', distributed:bool=False,
                     model_name:str='', dataset_name:str='', 
@@ -185,6 +187,30 @@ def get_status_id(api_key:str='', job_id:str=''):
 def get_train_logs(api_key:str='', job_id:str=''):
     return get_job_log(api_key, job_id)
 
-def download_model(api_key:str='', job_id:str='', save_path:str=''):
-    download_directory(api_key, job_id, save_path)
-    print('Model downloaded successfully!')
+def unzip_model(zip_path, extract_to):
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_to)
+        print(f"Model unzipped successfully to {extract_to}")
+    except zipfile.BadZipFile:
+        print(f"Error: {zip_path} is not a valid zip file.")
+
+# unzip the model and then delete the zip file
+def download_model(api_key: str, job_id: str, extract_to: str):
+    """
+    function to download the model from Simplfine cloud, unzip it, and delete the zip file
+    args:
+        api_key: your simplifine API key/token
+        job_id: the job id of the model to download
+        extract_to: the path to extract the model. this should be a directory.
+    """
+    zip_name = f"{job_id}.zip"
+    zip_path = os.path.join(extract_to, zip_name) 
+    download_directory(api_key, job_id, zip_path)
+    unzip_model(zip_path, extract_to)
+    try:
+        os.remove(zip_path)
+        print(f"Deleted the zip file at {zip_path}")
+    except Exception as e:
+        print(f"Error deleting the zip file: {e}")
+    print('Model downloaded, unzipped, and zip file deleted successfully!')
