@@ -59,7 +59,7 @@ def send_train_query(query:dict={}):
     - The headers are set to indicate JSON data.
     """
 
-    url = _url
+    url = _url + '/query'
     headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
     payload = query # Prepare the payload with the data list
     print('sending stuff', payload)
@@ -115,7 +115,7 @@ def get_company_status(api_key:str=''):
     - The 'response' field is extracted from the server's JSON response.
     """
     
-    url = _url
+    url = _url + '/status'
     headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
     payload = {'api_key':api_key} # Prepare the payload with the data list
 
@@ -131,7 +131,7 @@ def get_company_status(api_key:str=''):
         return {"error": str(e)}
 
 def get_job_log(api_key:str='', job_id:str=''):
-    url = _url
+    url = _url + '/job_output_log'
     headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
     payload = {'api_key':api_key, 'job_id':job_id} # Prepare the payload with the data list
 
