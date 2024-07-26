@@ -18,7 +18,7 @@
 import requests
 import json
 from .url_class import Config
-import tqdm
+from tqdm import tqdm
 
 def send_train_query(query:dict={}):
     """
