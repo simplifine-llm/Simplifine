@@ -41,6 +41,9 @@ pip install git+https://github.com/simplifine-llm/Simplifine.git
 ```
 
 ## 🏁 Quickstart
+
+For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/sft_quick_start.ipynb) in the examples folder:
+
 ```python
 from simplifine_alpha import train_engine
 import time
@@ -76,8 +79,6 @@ train_engine.hf_sft(
     zero=True
 )
 ```
-
-For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/sft_quick_start.ipynb) in the examples folder:
 
 ## 🤝 Contributing
 
