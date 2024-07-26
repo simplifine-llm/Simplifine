@@ -801,7 +801,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     
     # initialize the model
     model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
-
+    model.resize_token_embeddings(len(tokenizer))
     device, device_name = init_device()
     if torch.cuda.device_count() > 1:
         if ddp and zero:
@@ -814,7 +814,6 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                 print("Process group already initialized")
                 
             rank = dist.get_rank()
-            print(f"Start running basic DDP example on rank {rank}.")
             device_id = rank % torch.cuda.device_count()
             model = model.to(device_id)
             model = DDP(model, device_ids=[device_id])
