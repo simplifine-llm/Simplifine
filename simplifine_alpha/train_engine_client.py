@@ -145,3 +145,32 @@ def get_job_log(api_key:str='', job_id:str=''):
     except requests.exceptions.RequestException as e:
         # Handle any exceptions that occur during the request
         return {"error": str(e)}
+
+def download_directory(api_key, job_id, save_path):
+    url = 'http://54.221.57.211:5000/download_model'
+    payload = {
+        "api_key": api_key,
+        "job_id": job_id
+    }
+    headers = {
+        'Content-Type': 'application/json'
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, stream=True)
+        response.raise_for_status()
+
+        # Get total file size from headers
+        total_size = int(response.headers.get('content-length', 0))
+        block_size = 8192  # Size of each block to be read
+
+        with open(save_path, 'wb') as file, tqdm(
+                total=total_size, unit='iB', unit_scale=True, desc="Downloading") as bar:
+            for chunk in response.iter_content(chunk_size=block_size):
+                if chunk:
+                    file.write(chunk)
+                    bar.update(len(chunk))
+
+        print(f"\nDirectory downloaded successfully and saved to {save_path}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error occurred: {e}")

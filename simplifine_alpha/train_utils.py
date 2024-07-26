@@ -16,7 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
 # from train_engine import *
-from .train_engine_client import send_train_query, get_company_status, get_job_log
+from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory
 import uuid
 
 def clm_train_cloud(api_key:str='', job_name:str='', distributed:bool=False,
@@ -184,3 +184,6 @@ def get_status_id(api_key:str='', job_id:str=''):
 
 def get_train_logs(api_key:str='', job_id:str=''):
     return get_job_log(api_key, job_id)
+
+def download_model(api_key:str='', job_id:str='', save_path:str=''):
+    return download_directory(api_key, job_id, save_path)
