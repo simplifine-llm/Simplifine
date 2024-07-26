@@ -910,6 +910,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     if not os.path.exists(output_dir_final):
         os.makedirs(output_dir_final)
 
+    trainer.train()
     trainer.save_model(output_dir_final)
 
     if ddp:
