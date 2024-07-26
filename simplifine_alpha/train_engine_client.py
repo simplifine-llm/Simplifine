@@ -17,7 +17,7 @@
 '''
 import requests
 import json
-from .url_class import config
+from .url_class import Config
 
 def send_train_query(query:dict={}):
     """
