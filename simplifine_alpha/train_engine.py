@@ -735,26 +735,10 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     
     # initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
-    tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
     tokenizer.padding_side = "right"
-    # initial_token_count = len(tokenizer)
-    # added_token_count = tokenizer.add_special_tokens({"additional_special_tokens": [response_template]})
-
-
-    # initialize the sft config
-    # sft_config = SFTConfig(
-    #             fp16=fp16,
-    #             bf16=bf16,
-    #             output_dir=output_dir,
-    #             per_device_train_batch_size = batch_size,
-    #             per_device_eval_batch_size = batch_size,
-    #             num_train_epochs= num_epochs,
-    #             learning_rate=lr,
-    #             gradient_accumulation_steps=gradient_accumulation_steps,
-    #             gradient_checkpointing=gradient_checkpointing,
-    #             max_seq_length = max_seq_length,
-    #             report_to=report_to
-    #                     )
 
     if from_hf:
         try:
