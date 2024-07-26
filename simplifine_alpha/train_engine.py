@@ -1097,10 +1097,15 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     eval_dataset=tokenized_datasets["test"],
     )
 
-    trainer.train()
+     # creating a directory in ouput dir for final model saving
+    output_dir_final = os.path.join(output_dir, 'final_model')
+    if not os.path.exists(output_dir_final):
+        os.makedirs(output_dir_final)
 
-    if distributed:
-      dist.destroy_process_group()
+    trainer.save_model(output_dir_final)
+
+    if ddp:
+        dist.destroy_process_group()
 
 
 
