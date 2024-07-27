@@ -1001,7 +1001,7 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     # init wandb
     if report_to == 'wandb':
         wandb.login(key=wandb_api_key)
-        wandb.init(project="sft_train", config={"model_name": model_name,
+        wandb.init(project="clm_train", config={"model_name": model_name,
                                                    'epochs': num_epochs})
 
     # intialize the device  
