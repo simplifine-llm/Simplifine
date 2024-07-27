@@ -805,7 +805,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
 
     # if peft is enabled, use the peft model
     if use_peft:
-        model = get_peft_model(model, config=peft_config)
+        model = get_peft_model(model, peft_config=peft_config)
 
     device, device_name = init_device()
     if torch.cuda.device_count() > 1:
@@ -914,6 +914,11 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     output_dir_final = os.path.join(output_dir, 'final_model')
     if not os.path.exists(output_dir_final):
         os.makedirs(output_dir_final)
+    
+    if use_peft:
+        print(f'using peft, details on params:')
+        model.print_trainable_parameters()
+
 
     trainer.train()
     trainer.save_model(output_dir_final)
