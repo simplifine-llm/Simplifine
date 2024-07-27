@@ -44,41 +44,7 @@ pip install git+https://github.com/simplifine-llm/Simplifine.git
 
 For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/sft_quick_start.ipynb) in the examples folder:
 
-```python
-from simplifine_alpha import train_engine
-import time
-
-alpaca_template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
-
-### Instruction:
-{instruction}
-
-### Input:
-{input}
-
-### Response:
-{output}"""
-
-alpaca_keys = ['instruction', 'input', 'output']
-
-print("Training model...")
-
-train_engine.hf_sft(
-    model_name='unsloth/llama-3-8b-bnb-4bit',
-    dataset_name='yahma/alpaca-cleaned',
-    keys=alpaca_keys,
-    template=alpaca_template,
-    num_epochs=1,
-    batch_size=2,
-    lr=2e-4,
-    from_hf=True,
-    response_template='### Response:',
-    use_peft=False,
-    peft_config=None,
-    ddp=False,
-    zero=True
-)
-```
+Further examples on how to use train engine are also located in the examples folder.
 
 ## 🤝 Contributing
 
