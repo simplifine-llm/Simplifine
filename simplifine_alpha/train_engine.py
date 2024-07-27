@@ -914,10 +914,6 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     output_dir_final = os.path.join(output_dir, 'final_model')
     if not os.path.exists(output_dir_final):
         os.makedirs(output_dir_final)
-    
-    if use_peft:
-        print(f'using peft, details on params:')
-        model.print_trainable_parameters()
 
 
     trainer.train()
@@ -928,15 +924,14 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
 
     
 
-# TODO: complete this
 def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair",
-                    context_length:int=128, string_data:list=[],
-                    num_epochs:int=3, batch_size:int=8,
-                    lr:float=5e-5, from_hf:bool=True,
-                    inputs:list=[], 
-                    use_peft:bool=False, peft_config=None,
-                    distributed:bool=True, accelerator=None,
-                    from_scratch:bool=False, train_test_split_ratio:int=0.2,
+                    context_length:int=128, data:list=[],
+                    num_epochs:int=3, batch_size:int=8, fp16:bool=False, bf16:bool=False,
+                    lr:float=5e-5, from_hf:bool=True, do_split:bool=True, split_ratio:float=0.2,
+                    gradient_accumulation_steps:int=4, gradient_checkpointing:bool=False,
+                    inputs:list=[], report_to:str='none', wandb_api_key:str='',
+                    use_peft:bool=False, peft_config=None, hf_token:str='',
+                    accelerator=None, hf_column:str='text', lr_scheduler_type:str='linear',
                     output_dir:str='clm_output', ddp:bool=False, zero:bool=True):
     
     """
@@ -993,47 +988,153 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     - It supports distributed training using DDP or zero optimization if configured.
     """
 
+        # Ensure no default process group exists
+    if dist.is_initialized():
+        print("Destroying existing process group")
+        dist.destroy_process_group()
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
-    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    
+
+    # init wandb
+    if report_to == 'wandb':
+        wandb.login(key=wandb_api_key)
+        wandb.init(project="sft_train", config={"model_name": model_name,
+                                                   'epochs': num_epochs})
+
+    # intialize the device  
     device, deivce_name = init_device()
 
-      
+    # initialize the peft config
+    if use_peft:
+        if not peft_config:
+            peft_config = LoraConfig(
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.05,
+                bias="none",
+                task_type="CAUSAL_LM",
+            )
 
+    # load the dataset
+    if not from_hf: 
+        raw_dataset = Dataset.from_dict({'text': data})
+        if do_split:
+            raw_dataset = raw_dataset.train_test_split(split_ratio)
+    else:
+        try:
+            raw_dataset = load_dataset(dataset_name, token=False, split='train')
+        except Exception as e:
+            print(f'Error: {e}, this is because the split parameter is not available')
+            raw_dataset = load_dataset(dataset_name, token=False)
+        raw_dataset = raw_dataset.rename_column(hf_column, 'text')
+        if do_split:
+            raw_dataset = raw_dataset.train_test_split(split_ratio)
     
+
+    # initialize the model
+    model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
+    model.resize_token_embeddings(len(tokenizer))
+
+    # if peft is enabled, use the peft model
+    if use_peft:
+        model = get_peft_model(model, peft_config=peft_config)
+
+    device, device_name = init_device()
     if torch.cuda.device_count() > 1:
+        if ddp and zero:
+            raise ValueError('Zero optimization and DDP cannot be used together')
+        
         if ddp:
-          dist.init_process_group("nccl")
-          rank = dist.get_rank()
-          model = AutoModelForCausalLM.from_pretrained(model_name, attn_implementation="flash_attention_2")
-          print(f"Start running basic DDP example on rank {rank}.")
-          device_id = rank % torch.cuda.device_count()
-          model = model.to(device_id)
-          ddp_model = DDP(model, device_ids=[device_id])
-
-          distributed = True
-          model = ddp_model
-
+            if not dist.is_initialized():
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
+                
+            rank = dist.get_rank()
+            device_id = rank % torch.cuda.device_count()
+            model = model.to(device_id)
+            model = DDP(model, device_ids=[device_id])
+            distributed = True
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False
+                                    )
+        elif zero:
+            # sft_config = SFTConfig(
+            #                 output_dir=output_dir,
+            #                 deepspeed='/home/ubuntu/src/zero_config.json',
+            #                 per_device_train_batch_size = batch_size,
+            #                 per_device_eval_batch_size = batch_size,
+            #                 num_train_epochs= num_epochs,
+            #                 fp16=fp16,
+            #                 bf16=bf16,
+            #                 learning_rate=lr,
+            #                 gradient_accumulation_steps=gradient_accumulation_steps,
+            #                 gradient_checkpointing=gradient_checkpointing,
+            #                 max_seq_length = max_seq_length,
+            #                 report_to=report_to
+            #                         )
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            deepspeed="/home/ubuntu/src/zero_config.json",
+                            per_device_train_batch_size = 1,
+                            per_device_eval_batch_size = 1,
+                            num_train_epochs= 1,
+                            fp16=True,
+                            learning_rate=2e-5,
+                            gradient_accumulation_steps=4,
+                            report_to='none',
+                            gradient_checkpointing=True,
+                            remove_unused_columns=False,
+                            logging_steps=20,
+                            save_steps=50,
+                            eval_steps=1)
         else:
-          model = AutoModelForCausalLM.from_pretrained(model_name)
-
-
-
-
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False
+                                    )
     else:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
+        model.to(device)
         distributed = False
-
-
-    if not from_hf:
-        raw_dataset = Dataset.from_dict({'text': string_data})
-        raw_dataset = raw_dataset.train_test_split(train_test_split_ratio)
-    else:
-        raw_dataset = load_dataset(dataset_name)
-        raw_dataset = raw_dataset['train'].train_test_split(train_test_split_ratio)
-        raw_dataset = raw_dataset.rename_column('pos_passage', 'text')
+        if device_name == 'mps':
+            fp16 = False
+            bf16 = False
+        TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False
+                                    )
 
 
     def tokenize(element):
@@ -1056,72 +1157,27 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     tokenized_datasets = raw_dataset.map(
     tokenize, batched=True, remove_columns=raw_dataset['train'].column_names
     )
-    print(tokenized_datasets)
-    
-    
 
-    # Start Training
-    if not zero:
-
-      args = TrainingArguments(
-      output_dir=output_dir,
-      per_device_train_batch_size=16,
-      per_device_eval_batch_size=16,
-      evaluation_strategy="steps",
-      eval_steps=1500,
-      logging_steps=250,
-      gradient_accumulation_steps=8,
-      num_train_epochs=1,
-      weight_decay=0.1,
-      warmup_steps=500,
-      lr_scheduler_type="cosine",
-      learning_rate=lr,
-      save_steps=250,
-      fp16=True,
-      push_to_hub=False,
-      remove_unused_columns=False
-      )
-    
-    else:
-
-      args = TrainingArguments(
-      output_dir=output_dir,
-      per_device_train_batch_size=16,
-      per_device_eval_batch_size=16,
-      evaluation_strategy="steps",
-      eval_steps=1500,
-      logging_steps=250,
-      gradient_accumulation_steps=1,
-      num_train_epochs=1,
-      weight_decay=0.1,
-      warmup_steps=500,
-      lr_scheduler_type="cosine",
-      learning_rate=lr,
-      save_steps=250,
-      fp16=True,
-      push_to_hub=False,
-      remove_unused_columns=False,
-      deepspeed='/home/ubuntu/src/zero_config.json'
-      )
 
     trainer = Trainer(
     model=model,
     tokenizer=tokenizer,
-    args=args,
+    args=TrainArgs,
     data_collator=data_collator,
     train_dataset=tokenized_datasets["train"],
     eval_dataset=tokenized_datasets["test"],
     )
 
-     # creating a directory in ouput dir for final model saving
+    # creating a directory in ouput dir for final model saving
     output_dir_final = os.path.join(output_dir, 'final_model')
     if not os.path.exists(output_dir_final):
         os.makedirs(output_dir_final)
-
+    
+    trainer.train()
     trainer.save_model(output_dir_final)
-
+    
     if ddp:
-        dist.destroy_process_group()
+      dist.destroy_process_group()
 
 
 
