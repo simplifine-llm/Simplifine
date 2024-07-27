@@ -802,6 +802,11 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     # initialize the model
     model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
     model.resize_token_embeddings(len(tokenizer))
+
+    # if peft is enabled, use the peft model
+    if use_peft:
+        model = get_peft_model(model, config=peft_config)
+
     device, device_name = init_device()
     if torch.cuda.device_count() > 1:
         if ddp and zero:
