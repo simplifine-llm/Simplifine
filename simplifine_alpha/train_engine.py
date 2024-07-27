@@ -924,7 +924,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
 
     
 
-def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair",
+def hf_clm_train(model_name:str='', dataset_name:str="",
                     context_length:int=128, data:list=[],
                     num_epochs:int=3, batch_size:int=8, fp16:bool=False, bf16:bool=False,
                     lr:float=5e-5, from_hf:bool=True, do_split:bool=True, split_ratio:float=0.2,
@@ -942,7 +942,7 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     model_name : str
         The name or path of the pre-trained model to use.
     dataset_name : str, optional
-        The name of the dataset to use for training. Default is 'ali77sina/SEC-qa-pos-neg-pair'.
+        The name of the dataset to use for training. 
     context_length : int, optional
         Maximum length of the input sequences. Default is 128.
     string_data : List[str], optional

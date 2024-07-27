@@ -21,17 +21,16 @@ import uuid
 import zipfile
 import os
 
-def clm_train_cloud(api_key:str='', job_name:str='', distributed:bool=False,
-                    model_name:str='', dataset_name:str='', 
-                    learning_rate:float=1e-5, num_train_epochs:int=1, 
-                    batch_size:int=1, use_ddp:bool=False, do_split:bool=True, split_ratio:float=0.2,
-                    context_length:int=1024, use_zero:bool=False,
-                    use_fp16:bool=False, use_deepspeed:bool=False, use_peft:bool=False,
-                    use_gradient_checkpointing:bool=False, use_activation_checkpointing:bool=False,
-                    huggingface_token:str='', train_test_split_ratio:float=0.8,
-                    prompt_template:str='', report_to:str='none', hf_column:str='text',
-                    deepspeed_config:dict={}, gradient_accumulation_steps:int=1, per_device_batch_size:int=1,
-                    from_hf:bool=True, peft_config:dict={}):
+def clm_train_cloud(api_key:str='', job_name:str='',
+                    model_name:str='', dataset_name:str="",
+                    context_length:int=128, data:list=[],
+                    num_epochs:int=3, batch_size:int=8, use_fp16:bool=False, use_bf16:bool=False,
+                    lr:float=5e-5, from_hf:bool=True, do_split:bool=True, split_ratio:float=0.2,
+                    gradient_accumulation_steps:int=4, use_gradient_checkpointing:bool=False,
+                    report_to:str='none', wandb_api_key:str='',
+                    use_peft:bool=False, peft_config=None, hf_token:str='',
+                    hf_column:str='text', lr_scheduler_type:str='linear',
+                    use_ddp:bool=False, use_zero:bool=True):
     """
     Function to train a causal language model on the cloud.
     args:
@@ -47,49 +46,41 @@ def clm_train_cloud(api_key:str='', job_name:str='', distributed:bool=False,
         use_deepspeed (bool): Whether to use deepspeed.
         use_peft (bool): Whether to use PEFT.
         use_gradient_checkpointing (bool): Whether to use gradient checkpointing.
-        use_gactivation_checkpointing (bool): Whether to use activation checkpointing.
-        huggingface_token (str): The huggingface token.
-        response_template (str): The response template.
-        prompt_template (str): The prompt template.
+        hf_token (str): The huggingface token.
         report_to (str): The reporting destination.
         deepspeed_config (dict): The deepspeed configuration.
         gradient_accumulation_steps (int): The number of gradient accumulation steps.
     """
-
-    job_id = str(uuid.uuid4())
     
     config = {
         'api_key': api_key,
-        'job_id': job_id,
         'job_name': job_name,
         'type':'clm',
         'model_name':model_name,
         'dataset_name': dataset_name,
         'args': {
-            'lr': learning_rate,
+            'data':data,
+            'lr': lr,
             'context_length': context_length,
             'use_peft': use_peft,
             'peft_config': peft_config,
-            'num_train_epochs': num_train_epochs,
+            'num_train_epochs': num_epochs,
             'batch_size': batch_size,
             'use_ddp': use_ddp,
             'use_zero': use_zero,
             'use_fp16': use_fp16,
-            'use_deepspeed': use_deepspeed,
+            'use_bf16':use_bf16,
             'use_gradient_checkpointing': use_gradient_checkpointing,
-            'use_activation_checkpointing': use_activation_checkpointing,
-            'huggingface_token': huggingface_token,
-            'prompt_template': prompt_template,
+            'huggingface_token': hf_token,
             'report_to': report_to,
+            'wandb_api_key': wandb_api_key,
             'do_split': do_split,
             'split_ratio': split_ratio,
-            'deepspeed_config': deepspeed_config,
             'gradient_accumulation_steps': gradient_accumulation_steps,
-            'per_device_batch_size': per_device_batch_size,
+            'per_device_batch_size': batch_size,
             'from_hf': from_hf,
-            'distributed': distributed,
-            'train_test_split_ratio':train_test_split_ratio,
-            'hf_column': hf_column
+            'hf_column': hf_column,
+            'lr_scheduler_type': lr_scheduler_type,
         }
     }
     send_train_query(config)
@@ -104,7 +95,7 @@ def sft_train_cloud(api_key:str='', job_name:str='',
                     huggingface_token:str='', do_split:bool=True, split_ratio:float=0.2,
                     prompt_template:str='', report_to:str='none', max_seq_length:int=2048,
                     deepspeed_config:dict={}, gradient_accumulation_steps:int=1, 
-                    from_hf:bool=True, peft_config:dict={}, train_test_split_ratio:float=0.8, use_zero:bool=False,
+                    from_hf:bool=True, peft_config:dict={}, use_zero:bool=False,
                     ):
     """
     Function to send the training query to the server. This is for supervised fine-tuning. 
@@ -125,11 +116,9 @@ def sft_train_cloud(api_key:str='', job_name:str='',
         use_gradient_checkpointing: whether to use gradient checkpointing
 
     """
-    job_id = str(uuid.uuid4())
     
     config = {
         'api_key': api_key,
-        'job_id': job_id,
         'job_name': job_name,
         'type':'sft',
         'model_name':model_name,
@@ -159,7 +148,6 @@ def sft_train_cloud(api_key:str='', job_name:str='',
             'gradient_accumulation_steps': gradient_accumulation_steps,
             'per_device_batch_size': per_device_batch_size,
             'from_hf': from_hf,
-            'train_test_split_ratio':train_test_split_ratio,
             'data': data
         }
     }
