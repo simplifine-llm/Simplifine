@@ -929,9 +929,9 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
                     num_epochs:int=3, batch_size:int=8, fp16:bool=False, bf16:bool=False,
                     lr:float=5e-5, from_hf:bool=True, do_split:bool=True, split_ratio:float=0.2,
                     gradient_accumulation_steps:int=4, gradient_checkpointing:bool=False,
-                    inputs:list=[], report_to:str='none', wandb_api_key:str='',
+                    report_to:str='none', wandb_api_key:str='',
                     use_peft:bool=False, peft_config=None, hf_token:str='',
-                    accelerator=None, hf_column:str='text', lr_scheduler_type:str='linear',
+                    hf_column:str='text', lr_scheduler_type:str='linear',
                     output_dir:str='clm_output', ddp:bool=False, zero:bool=True):
     
     """
@@ -1070,7 +1070,8 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
                             gradient_accumulation_steps=gradient_accumulation_steps,
                             gradient_checkpointing=gradient_checkpointing,
                             report_to=report_to,
-                            remove_unused_columns=False
+                            remove_unused_columns=False,
+                            lr_scheduler_type=lr_scheduler_type
                                     )
         elif zero:
             # sft_config = SFTConfig(
@@ -1101,7 +1102,9 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
                             remove_unused_columns=False,
                             logging_steps=20,
                             save_steps=50,
-                            eval_steps=1)
+                            eval_steps=1,
+                            lr_scheduler_type=lr_scheduler_type
+                            )
         else:
             TrainArgs = TrainingArguments(
                             output_dir=output_dir,
@@ -1114,7 +1117,8 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
                             gradient_accumulation_steps=gradient_accumulation_steps,
                             gradient_checkpointing=gradient_checkpointing,
                             report_to=report_to,
-                            remove_unused_columns=False
+                            remove_unused_columns=False,
+                            lr_scheduler_type=lr_scheduler_type
                                     )
     else:
         model.to(device)
@@ -1133,7 +1137,8 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
                             gradient_accumulation_steps=gradient_accumulation_steps,
                             gradient_checkpointing=gradient_checkpointing,
                             report_to=report_to,
-                            remove_unused_columns=False
+                            remove_unused_columns=False,
+                            lr_scheduler_type=lr_scheduler_type
                                     )
 
 
