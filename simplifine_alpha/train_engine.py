@@ -25,8 +25,7 @@ from transformers import AutoModelForSequenceClassification
 from torch.utils.data import DataLoader
 from datasets import load_dataset, Dataset
 from peft import get_peft_model, LoraConfig, TaskType
-from accelerate import Accelerator
-from sentence_transformers import SentenceTransformerModelCardData, SentenceTransformer
+from sentence_transformers import SentenceTransformer
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.evaluation import (
     InformationRetrievalEvaluator,
@@ -214,6 +213,19 @@ def hf_finetune_embedder_contrastive(model_name:str, dataset_name:str='',
     Notes:
     - This function assumes that `transformers`, `datasets`, `sentence_transformers`, and `torch` are installed.
     - It also assumes that the required classes such as `SentenceTransformerTrainer` and `MatryoshkaLoss` are defined/imported correctly.
+    - Best format is as follows:
+            Inputs:
+        +-----------------------------------------------+------------------------------+
+        | Texts                                         | Labels                       |
+        +===============================================+==============================+
+        | (anchor, positive/negative) pairs             | 1 if positive, 0 if negative |
+        +-----------------------------------------------+------------------------------+
+        example:
+        dataset_train_v2 = Dataset.from_dict({
+                "sentence1": ["It's nice weather outside today.", "He drove to work."],
+                "sentence2": ["It's so sunny.", "She walked to the store."],
+                "label": [1, 0],
+            })
     """
     
     device_name = None
@@ -913,7 +925,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     # creating a directory in ouput dir for final model saving
     output_dir_final = os.path.join(output_dir, 'final_model')
     if not os.path.exists(output_dir_final):
-        os.makedirs(output_dir_final)
+        os.makedirs(output_dir_final, exist_ok=True)
 
 
     trainer.train()
@@ -1176,7 +1188,7 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
     # creating a directory in ouput dir for final model saving
     output_dir_final = os.path.join(output_dir, 'final_model')
     if not os.path.exists(output_dir_final):
-        os.makedirs(output_dir_final)
+        os.makedirs(output_dir_final, exist_ok=True)
     
     trainer.train()
     trainer.save_model(output_dir_final)

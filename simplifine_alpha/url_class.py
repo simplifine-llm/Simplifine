@@ -2,4 +2,4 @@ from dataclasses import dataclass
 
 @dataclass
 class Config:
-    url: str = "http://54.221.57.211:5000"
+    url: str = "http://34.196.116.1:5000"
