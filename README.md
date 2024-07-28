@@ -42,7 +42,7 @@ pip install git+https://github.com/simplifine-llm/Simplifine.git
 
 ## 🏁 Quickstart
 
-For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/sft_quick_start.ipynb) in the examples folder:
+For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb) in the examples folder:
 
 Further examples on how to use train engine are also located in the examples folder.
 
