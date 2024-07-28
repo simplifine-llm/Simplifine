@@ -20,7 +20,7 @@ import zipfile
 import os
 from .url_class import url_config
 
-class client:
+class Client:
     def __init__(self, api_key:str='', gpu_type:str=''):
         self.api_key = api_key
         if api_key == '':
