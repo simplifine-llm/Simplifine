@@ -17,7 +17,6 @@
 '''
 # from train_engine import *
 from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory
-import uuid
 import zipfile
 import os
 
