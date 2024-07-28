@@ -167,17 +167,13 @@ class Client:
         }
         send_train_query(config, url=self.url)
 
-
-    def get_job_status(self):
+    def get_all_jobs(self):
         """
         Function to get the status of a job.
         This function returns all of the jobs under your API key.
         """
         company_job_data = get_company_status(api_key=self.api_key, url=self.url)
         return company_job_data
-
-    def get_all_jobs(self):
-        return get_company_status(self.api_key, url=self.url)
 
     def get_status_id(self, job_id:str=''):
         all_jobs = get_company_status(self.api_key, url=self.url)['response']

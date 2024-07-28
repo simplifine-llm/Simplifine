@@ -171,3 +171,11 @@ def download_directory(api_key, job_id, save_path, url):
         print(f"\nDirectory downloaded successfully and saved to {save_path}")
     except requests.exceptions.RequestException as e:
         print(f"Error occurred: {e}")
+
+if __name__ == '__main__':
+    # Example usage of the functions
+    # Set the URL of the server
+    url = "http://18.189.220.250:5000"
+    api_key = 'SimpTest'
+    status = get_company_status(api_key, url)
+    print(status)
