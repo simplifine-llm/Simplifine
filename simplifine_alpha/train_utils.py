@@ -35,6 +35,15 @@ class Client:
             self.url = url_config.url
 
 
+    def cls_train_cloud(self, job_name:str='', dataset_name:str='', model_name:str='', 
+                        inputs:list=[], labels:list=[], from_hf:bool=True, use_peft:bool=False,
+                        peft_config=None, hf_token:str='', lr:float=5e-5, num_epochs:int=3,
+                        batch_size:int=8, use_fp16:bool=False, use_bf16:bool=False,
+                        use_ddp:bool=False, use_zero:bool=True, use_gradient_checkpointing:bool=False,
+                        report_to:str='none', wandb_api_key:str='', do_split:bool=True, split_ratio:float=0.2,
+                        gradient_accumulation_steps:int=4, hf_column_input:str='', hf_column_label:str='', lr_scheduler_type:str='linear'):
+        pass
+
     def clm_train_cloud(self, job_name:str='',
                         model_name:str='', dataset_name:str="",
                         context_length:int=128, data:list=[],

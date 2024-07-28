@@ -1000,7 +1000,7 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
     - It supports distributed training using DDP or zero optimization if configured.
     """
 
-        # Ensure no default process group exists
+    # Ensure no default process group exists
     if dist.is_initialized():
         print("Destroying existing process group")
         dist.destroy_process_group()
@@ -1308,12 +1308,14 @@ def hf_clf_multi_label_train(model_name:str, dataset_name:str='',
     trainer.train()
 
 
-def hf_clf_train(model_name:str, dataset_name:str='', 
+def hf_clf_train(model_name:str, dataset_name:str='', hf_data_column:str='', hf_label_column:str='',
                  num_epochs:int=3, batch_size:int=8, 
-                 lr:float=5e-5, from_hf:bool=True,
-                 inputs:list=[], labels:list=[],
-                 use_peft:bool=False, peft_config=None,
-                 accelerator=None, use_wandb = False):
+                 lr:float=5e-5, from_hf:bool=True, hf_token:str='',
+                 inputs:list=[], labels:list=[], output_dir:str='clf_output',
+                 use_peft:bool=False, peft_config=None, 
+                 report_to='none', wandb_api_key:str='',
+                 ddp:bool=False, zero:bool=False, fp16:bool=False, bf16:bool=False,
+                 gradient_accumulation_steps:int=1, gradient_checkpointing:bool=False):
 
     """
 Train a sequence classification model using Hugging Face transformers.
@@ -1383,139 +1385,173 @@ Notes:
 - WandB integration (`use_wandb=True`) enables logging of training metrics and progress.
 """
 
-    device, deivce_name = init_device()
+    # Ensure no default process group exists
+    if dist.is_initialized():
+        print("Destroying existing process group")
+        dist.destroy_process_group()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
+
+    # init wandb
+    if report_to == 'wandb':
+        wandb.login(key=wandb_api_key)
+        wandb.init(project="clm_train", config={"model_name": model_name,
+                                                   'epochs': num_epochs})
+
+    device, deivce_name = init_device()
     
 
     def tokenize_function(examples):
-        return tokenizer(examples["text"], padding="max_length", truncation=True)
+        try:
+            texts = examples["text"]
+            # Ensure texts is a list of strings
+            if not isinstance(texts, list):
+                texts = [texts]
+            return tokenizer(texts, padding="max_length", truncation=True)
+        except Exception as e:
+            print(f"Error during tokenization: {e}")
+            print(f"Input data: {examples['text']}")
+            raise
     
     
     if from_hf:
         dataset = load_dataset(dataset_name)
-        dataset = dataset['train'][:10000]
-        num_labels = len(set(dataset['label']))
-        dataset = Dataset.from_dict(dataset)
-        tokenized_datasets = dataset.map(tokenize_function, batched=True)
-        tokenized_datasets = tokenized_datasets.remove_columns(["text"])
-        tokenized_datasets.set_format("torch")
-        tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
-        
-
+        # load the train split if exists
+        if 'train' in dataset:
+            dataset = dataset['train']
+        inputs = dataset[hf_data_column]
+        labels = dataset[hf_label_column]
+        tokenized_datasets = Dataset.from_dict({'text':inputs, 'label':labels})
     else:
         tokenized_datasets = Dataset.from_dict({'text':inputs, 'label':labels})
-        num_labels = len(set(labels))
-        tokenized_datasets = tokenized_datasets.map(tokenize_function, batched=True)
-        tokenized_datasets = tokenized_datasets.remove_columns(["text"])
-        tokenized_datasets.set_format("torch")
-        tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
+
+    print(tokenized_datasets)
+    num_labels = len(set(labels))
+    tokenized_datasets = tokenized_datasets.map(tokenize_function, batched=True)
+    tokenized_datasets = tokenized_datasets.remove_columns(["text"])
+    tokenized_datasets.set_format("torch")
+    tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
     
     tokenized_datasets = tokenized_datasets.train_test_split(0.2)
-    small_train_dataset = tokenized_datasets["train"].shuffle(seed=42)
-    small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42)
 
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
+    print(tokenized_datasets)
+
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels, token = hf_token)
     model.config.pad_token_id = model.config.eos_token_id
 
-    train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=8)
-    eval_dataloader = DataLoader(small_eval_dataset, batch_size=8)
 
-    optimizer = AdamW(model.parameters(), lr=1e-5)
-
-    num_epochs = 3
-    num_training_steps = num_epochs * len(train_dataloader)
-    lr_scheduler = get_scheduler(
-    name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps
-    )
     model.to(device)  
     distributed = False
-    if torch.cuda.device_count() > 1:
-        distributed = True
-        model = torch.nn.DataParallel(model)
-    
+    # if peft is enabled, use the peft model
     if use_peft:
-        if peft_config is None:
+        if not peft_config:
             peft_config = LoraConfig(
-            task_type=TaskType.SEQ_CLS, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.05,
+                bias="none",
+                task_type="CAUSAL_LM",
             )
-        model = get_peft_model(model, peft_config)
+        model = get_peft_model(model, peft_config=peft_config)
+        
 
-    progress_bar = tqdm(range(num_training_steps))
-
-    
-    if use_wandb:
-        wandb.init(project="hf_clf_train", config={"model_name": model_name,
-                                                   'epochs': num_epochs})
-
-    model.train()
-    running_loss=0.0
-    if distributed == False:
-        for epoch in range(num_epochs):
-            for num,batch in enumerate(train_dataloader):
-                batch = {k: v.to(device) for k, v in batch.items()}
-                outputs = model(**batch)
-                loss = outputs.loss
-                loss.backward()
-
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
-                progress_bar.update(1)
-                running_loss += loss.item()
-                 # optional, wandb logging
-                if num%50 == 0 and use_wandb:
-                    
-                    # ---
-                    correct = 0
-                    total = 0
-                    val_loss = 0.0
-                    with torch.no_grad():
-                        for data in eval_dataloader:
-                            labels = data['labels'].to(device)
-                            batch = {k: v.to(device) for k, v in data.items()}
-                            outputs = model(**batch)
-                            predicted = torch.argmax(outputs.logits, dim = -1)
-                            total += len(labels)
-                            # TODO: this is overhead and will be slow.
-                            correct += (predicted == labels).sum().item()
-                            val_loss += loss.item()
-                    if use_wandb:
-                        wandb.log({"loss_train": running_loss/50, 'batch': num, 'epoch': epoch, 'accuracy_val': 100 * correct / total, 'loss_val': val_loss/50})
-                    running_loss=0.0
-
+    device, device_name = init_device()
+    if torch.cuda.device_count() > 1:
+        if ddp and zero:
+            raise ValueError('Zero optimization and DDP cannot be used together')
+        
+        if ddp:
+            if not dist.is_initialized():
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
+                
+            rank = dist.get_rank()
+            device_id = rank % torch.cuda.device_count()
+            model = model.to(device_id)
+            model = DDP(model, device_ids=[device_id])
+            distributed = True
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                                    )
+        elif zero:
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            deepspeed="/home/ubuntu/src/zero_config.json",
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            report_to=report_to,
+                            gradient_checkpointing=gradient_checkpointing,
+                            remove_unused_columns=False,
+                            )
+        else:
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                                    )
     else:
-        for epoch in range(num_epochs):
-            for num,batch in enumerate(train_dataloader):
-                batch = {k: v.to(device) for k, v in batch.items()}
-                outputs = model(**batch)
-                loss = outputs.loss.mean()
-                loss.backward()
+        model.to(device)
+        distributed = False
+        if device_name == 'mps':
+            fp16 = False
+            bf16 = False
+        TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                                    )
+    
+    trainer = Trainer(
+    model=model,
+    tokenizer=tokenizer,
+    args=TrainArgs,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["test"],
+    )
 
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
-                progress_bar.update(1)
-                running_loss += loss.item()
-                 # optional, wandb logging
-                if num%50 == 0 and use_wandb:
-                    
-                    # ---
-                    correct = 0
-                    total = 0
-                    val_loss = 0.0
-                    with torch.no_grad():
-                        for data in eval_dataloader:
-                            labels = data['labels'].to(device)
-                            batch = {k: v.to(device) for k, v in data.items()}
-                            outputs = model(**batch)
-                            predicted = torch.argmax(outputs.logits, dim = -1)
-                            total += len(labels)
-                            # TODO: this is overhead and will be slow.
-                            correct += (predicted == labels).sum().item()
-                            val_loss += loss.item()
-                    if use_wandb:
-                        wandb.log({"loss_train": running_loss/50, 'batch': num, 'epoch': epoch, 'accuracy_val': 100 * correct / total, 'loss_val': val_loss/50})
-                    running_loss=0.0
+    # creating a directory in ouput dir for final model saving
+    output_dir_final = os.path.join(output_dir, 'final_model')
+    if not os.path.exists(output_dir_final):
+        os.makedirs(output_dir_final, exist_ok=True)
+    
+    trainer.train()
+    trainer.save_model(output_dir_final)
+    
+    if ddp:
+      dist.destroy_process_group()
     
