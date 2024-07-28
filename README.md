@@ -62,3 +62,10 @@ Find our full documentation at [docs.simplifine.com](http://docs.simplifine.com)
 
 Please raise issues for any new features you would like to see implemented—we will work hard to make it happen ASAP! For any other questions, contact us at [founders@simplifine.com](mailto:founders@simplifine.com).
 
+## 🪲 FAQs and bugs
+**RuntimeError: Error building extension 'cpu_adam' python dev**: This happens when python-dev is not installed and offload is being used by ZeRO. simple try 
+```python
+sudo apt-get install python-dev   # for python2.x installs
+sudo apt-get install python3-dev  # for python3.x installs
+```
+See this [link](https://stackoverflow.com/questions/21530577/fatal-error-python-h-no-such-file-or-directory)
