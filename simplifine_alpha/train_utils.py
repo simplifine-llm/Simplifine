@@ -15,7 +15,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
-from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory
+from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
 import zipfile
 import os
 from .url_class import url_config
@@ -221,3 +221,8 @@ class Client:
         except Exception as e:
             print(f"Error deleting the zip file: {e}")
         print('Model downloaded, unzipped, and zip file deleted successfully!')
+    
+    def stop_job(self, job_id:str=''):
+        if job_id == '':
+            raise Exception('Please provide a job ID to stop the job.')
+        return stop_job(self.api_key, job_id, url=self.url)
