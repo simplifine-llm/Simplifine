@@ -69,6 +69,11 @@ We currently support DistributedDataParallel (DDP) and ZeRO from DeepSpeed. **TL
 
 **ZeRO** is a powerfull optimization developed by DeepSpeed. It comes in different stages (1,2 and 3). Each stage shards the different parts of the training process (params, grads, activation states). This is really usefull if a model cannot fit on the GPU memory. ZeRO also supports offloading to the CPU, which makes even more room for training larger models. 
 
+Here are some examples and the appropriate optimization method:
+  1. A llama-3-8b model with 16 bit percision: ZeRO stage 3 on 8 A100s.
+  2. A llama-3-8b model with LoRA adapters: Usually fine with DDP on A100s.
+  3. A GPT-2 with 16 bit percision: DDP
+
 ## 🪲 FAQs and bugs
 **RuntimeError: Error building extension 'cpu_adam' python dev**: This happens when python-dev is not installed and offload is being used by ZeRO. simple try 
 ```python
