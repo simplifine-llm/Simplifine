@@ -62,7 +62,7 @@ Find our full documentation at [docs.simplifine.com](http://docs.simplifine.com)
 
 Please raise issues for any new features you would like to see implemented—we will work hard to make it happen ASAP! For any other questions, contact us at [founders@simplifine.com](mailto:founders@simplifine.com).
 
-## ⛮ General computer considerations
+## ⛮ General comput considerations
 We currently support DistributedDataParallel (DDP) and ZeRO from DeepSpeed. **TL;DR** DDP is usefull when a model can fit on GPU memory (this includes gradients and activation states), and ZeRO is usefull when model requires sharding across multiple GPUs.
 
 **Longer** **Version**: **DDP** creates a replica on each processor (GPU). Imagine 8 GPUs, each being fed with a single data point. This would make a batch size of 8. The model replicas are then updated on each device. DDP speeds up training via parallelising the data-feeding process. DDP **fails** if the replica cannot fit in the GPU memory. Note that the memory does not only host parameters, but gradients and optizmier states. 
