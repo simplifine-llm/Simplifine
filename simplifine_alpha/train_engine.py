@@ -836,14 +836,18 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets['train'].column_names)
     promptTokenizedDataset = promptTokenizedDataset.shuffle(len(promptTokenizedDataset))
 
+    # initialize the peft config
     if use_peft:
         if not peft_config:
+            target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",]
+
             peft_config = LoraConfig(
                 r=16,
                 lora_alpha=32,
                 lora_dropout=0.05,
                 bias="none",
                 task_type="CAUSAL_LM",
+                target_modules=target_modules,
             )
     
     # initialize the model
