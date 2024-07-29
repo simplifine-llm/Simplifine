@@ -1060,12 +1060,15 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
     # initialize the peft config
     if use_peft:
         if not peft_config:
+            target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",]
+
             peft_config = LoraConfig(
                 r=16,
                 lora_alpha=32,
                 lora_dropout=0.05,
                 bias="none",
                 task_type="CAUSAL_LM",
+                target_modules=target_modules,
             )
 
     # load the dataset
