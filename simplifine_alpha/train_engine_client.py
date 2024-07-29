@@ -172,6 +172,19 @@ def download_directory(api_key, job_id, save_path, url):
     except requests.exceptions.RequestException as e:
         print(f"Error occurred: {e}")
 
+def stop_job(api_key:str='', job_id:str='', url:str=''):
+    _url = url + '/stop_job'
+    headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
+    payload = {'api_key':api_key, 'job_id':job_id}
+    try:
+        response = requests.post(_url, headers=headers, data=json.dumps(payload))
+        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+        
+        # Return the JSON response from the server
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
+
 if __name__ == '__main__':
     # Example usage of the functions
     # Set the URL of the server

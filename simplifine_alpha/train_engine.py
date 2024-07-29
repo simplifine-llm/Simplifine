@@ -749,8 +749,30 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    
     tokenizer.padding_side = "right"
+
+    # replacing the response template, with chat/instruction based tokens.
+    # tokenizing response tempaltes in context can be different to ones without it
+    if tokenizer.chat_template:
+        # dummy messages to extract chat tokens
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant."
+            },
+            {
+                "role": "user",
+                "content": "Who won the world series in 2020?"
+            },
+            {
+                "role": "assistant",
+                "content": "The Los Angeles Dodgers won the World Series in 2020."
+            }
+    ]   
+        text = tokenizer.apply_chat_template(messages, tokenize=False)
+        chat_temp = text.split(messages[1]['content'])[-1].split(messages[-1]['content'])[0]
+        chat_response_temp = chat_temp.replace(tokenizer.eos_token,'')
+
 
     if from_hf:
         try:
@@ -792,12 +814,25 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
         if not all(isinstance(text, str) for text in output_texts):
             raise ValueError("Formatted text must be a list of strings")
 
-        tokenized_output = tokenizer(output_texts, truncation=False, add_special_tokens=False)
-        
+        filtered_output_texts = []
+        for text in output_texts:
+            tokenized_output = tokenizer(text, truncation=False, add_special_tokens=False)
+            if len(tokenized_output['input_ids']) <= tokenizer.model_max_length:
+                filtered_output_texts.append(text)
+    
+        # Ensure that there's at least one text to process
+        if not filtered_output_texts:
+            return {'input_ids': [], 'attention_mask': []}
+    
+        tokenized_output = tokenizer(filtered_output_texts, truncation=True, padding='max_length', add_special_tokens=True)
+
         return tokenized_output
 
-    collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
-
+    if tokenizer.chat_template:
+        collator = DataCollatorForCompletionOnlyLM(chat_response_temp, tokenizer=tokenizer)
+    else:
+        collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+ 
     promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets['train'].column_names)
     promptTokenizedDataset = promptTokenizedDataset.shuffle(len(promptTokenizedDataset))
 
@@ -812,7 +847,10 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
             )
     
     # initialize the model
-    model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
+    model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                 token = hf_token,
+                                                 attn_implementation="flash_attention_2",
+                                                 torch_dtype=torch.float16)
     model.resize_token_embeddings(len(tokenizer))
 
     # if peft is enabled, use the peft model
