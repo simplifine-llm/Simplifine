@@ -673,10 +673,10 @@ def cleanup():
 def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
            keys:list=[], template:str='', do_split:bool=True, split_ratio:float=0.2, load_eval_from_data:bool=False, 
            data:dict={}, num_epochs:int=3, batch_size:int=1, wandb_api_key:str='',
-           lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:',
+           lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:', eval_steps:int=10,
            use_peft:bool=False, peft_config=None, ddp:bool=False, zero:bool=True, deepspeed_config:str='home/ubuntu/src/zero_config.json',
            hf_token:str='', gradient_accumulation_steps:int=1, fp16:bool=False, bf16:bool=False, report_to:str='none',
-            gradient_checkpointing:bool=False, max_seq_length:int=2048, use_wandb:bool=False, output_dir:str='sft_output'):
+            gradient_checkpointing:bool=False, max_seq_length:int=2048, use_wandb:bool=False, output_dir:str='sft_output', eval_accumulation_steps:int=8):
     
     """
     Execute the SFT (Supervised Finetuning) process using Hugging Face Transformers.
@@ -889,7 +889,9 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             gradient_checkpointing=gradient_checkpointing,
                             max_seq_length = max_seq_length,
                             report_to=report_to,
-                            remove_unused_columns=False
+                            remove_unused_columns=False,
+                            eval_steps=eval_steps,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
         elif zero:
             # sft_config = SFTConfig(
@@ -921,7 +923,8 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             logging_steps=20,
                             max_seq_length = max_seq_length,
                             save_steps=50,
-                            eval_steps=1)
+                            eval_steps=1,
+                            eval_accumulation_steps=eval_accumulation_steps)
         else:
             sft_config = SFTConfig(
                             output_dir=output_dir,
@@ -934,7 +937,9 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             gradient_accumulation_steps=gradient_accumulation_steps,
                             gradient_checkpointing=gradient_checkpointing,
                             max_seq_length = max_seq_length,
-                            report_to=report_to
+                            report_to=report_to,
+                            eval_steps=eval_steps,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
     else:
         model.to(device)
@@ -953,16 +958,22 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             gradient_checkpointing=gradient_checkpointing,
                             max_seq_length = max_seq_length,
                             report_to=report_to,
-                            remove_unused_columns=True
+                            remove_unused_columns=True,
+                            eval_steps=eval_steps,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
-    trainer = SFTTrainer(
-    model,
-    tokenizer=tokenizer,
-    train_dataset=promptTokenizedDataset['train'],
-    args=sft_config,
-    formatting_func=formatting_prompts_func,
-    data_collator=collator,
-    )
+    
+    
+    if do_split:
+        trainer = SFTTrainer(
+        model,
+        tokenizer=tokenizer,
+        train_dataset=promptTokenizedDataset['train'],
+        eval_dataset=promptTokenizedDataset['test'],
+        args=sft_config,
+        formatting_func=formatting_prompts_func,
+        data_collator=collator
+        )
 
     # creating a directory in ouput dir for final model saving
     output_dir_final = os.path.join(output_dir, 'final_model')
@@ -985,7 +996,7 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
                     gradient_accumulation_steps:int=4, gradient_checkpointing:bool=False,
                     report_to:str='none', wandb_api_key:str='',
                     use_peft:bool=False, peft_config=None, hf_token:str='',
-                    hf_column:str='text', lr_scheduler_type:str='linear',
+                    hf_column:str='text', lr_scheduler_type:str='linear', eval_accumulation_steps:int=8,
                     output_dir:str='clm_output', ddp:bool=False, zero:bool=True):
     
     """
@@ -1128,7 +1139,8 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
                             gradient_checkpointing=gradient_checkpointing,
                             report_to=report_to,
                             remove_unused_columns=False,
-                            lr_scheduler_type=lr_scheduler_type
+                            lr_scheduler_type=lr_scheduler_type,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
         elif zero:
             # sft_config = SFTConfig(
@@ -1160,7 +1172,8 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
                             logging_steps=20,
                             save_steps=50,
                             eval_steps=1,
-                            lr_scheduler_type=lr_scheduler_type
+                            lr_scheduler_type=lr_scheduler_type,
+                            eval_accumulation_steps=eval_accumulation_steps
                             )
         else:
             TrainArgs = TrainingArguments(
@@ -1175,7 +1188,8 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
                             gradient_checkpointing=gradient_checkpointing,
                             report_to=report_to,
                             remove_unused_columns=False,
-                            lr_scheduler_type=lr_scheduler_type
+                            lr_scheduler_type=lr_scheduler_type,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
     else:
         model.to(device)
@@ -1195,7 +1209,8 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
                             gradient_checkpointing=gradient_checkpointing,
                             report_to=report_to,
                             remove_unused_columns=False,
-                            lr_scheduler_type=lr_scheduler_type
+                            lr_scheduler_type=lr_scheduler_type,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
 
 

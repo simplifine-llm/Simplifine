@@ -19,6 +19,8 @@ from .train_engine_client import send_train_query, get_company_status, get_job_l
 import zipfile
 import os
 from .url_class import url_config
+from dataclasses import asdict
+import warnings
 
 class Client:
     def __init__(self, api_key:str='', gpu_type:str=''):
@@ -50,7 +52,7 @@ class Client:
                         num_epochs:int=3, batch_size:int=8, use_fp16:bool=False, use_bf16:bool=False,
                         lr:float=5e-5, from_hf:bool=True, do_split:bool=True, split_ratio:float=0.2,
                         gradient_accumulation_steps:int=4, use_gradient_checkpointing:bool=False,
-                        report_to:str='none', wandb_api_key:str='',
+                        report_to:str='none', wandb_api_key:str='', eval_accumulation_steps:int=4,
                         use_peft:bool=False, peft_config=None, hf_token:str='',
                         hf_column:str='text', lr_scheduler_type:str='linear',
                         use_ddp:bool=False, use_zero:bool=True):
@@ -74,6 +76,16 @@ class Client:
             deepspeed_config (dict): The deepspeed configuration.
             gradient_accumulation_steps (int): The number of gradient accumulation steps.
         """
+
+        # check for peft and peft config
+        if use_peft:
+            if peft_config is None:
+                warnings.warn('PEFT is enabled but no PEFT config provided. Using default mode.')
+                _peft_config = None
+            else:
+                _peft_config = asdict(peft_config)
+
+
         
         config = {
             'api_key': self.api_key,
@@ -86,7 +98,7 @@ class Client:
                 'lr': lr,
                 'context_length': context_length,
                 'use_peft': use_peft,
-                'peft_config': peft_config,
+                'peft_config': _peft_config,
                 'num_train_epochs': num_epochs,
                 'batch_size': batch_size,
                 'use_ddp': use_ddp,
@@ -104,6 +116,7 @@ class Client:
                 'from_hf': from_hf,
                 'hf_column': hf_column,
                 'lr_scheduler_type': lr_scheduler_type,
+                'eval_accumulation_steps': eval_accumulation_steps
             }
         }
         send_train_query(config, url=self.url)
@@ -112,13 +125,13 @@ class Client:
                         model_name:str='', dataset_name:str='', data:dict={},
                         keys:str='', template:str='', response_template:str='',
                         learning_rate:float=1e-5, num_train_epochs:int=1,  per_device_batch_size:int=1,
-                        batch_size:int=1, use_ddp:bool=False,
+                        batch_size:int=1, use_ddp:bool=False, eval_accumulation_steps:int=4,
                         use_fp16:bool=False, use_deepspeed:bool=False, use_peft:bool=False,
                         use_gradient_checkpointing:bool=False, use_activation_checkpointing:bool=False,
                         huggingface_token:str='', do_split:bool=True, split_ratio:float=0.2,
                         prompt_template:str='', report_to:str='none', max_seq_length:int=2048,
                         deepspeed_config:dict={}, gradient_accumulation_steps:int=1, 
-                        from_hf:bool=True, peft_config:dict={}, use_zero:bool=False,
+                        from_hf:bool=True, peft_config=None, use_zero:bool=False,
                         ):
         """
         Function to send the training query to the server. This is for supervised fine-tuning. 
@@ -139,6 +152,14 @@ class Client:
             use_gradient_checkpointing: whether to use gradient checkpointing
 
         """
+
+        # check for peft and peft config
+        if use_peft:
+            if peft_config is None:
+                warnings.warn('PEFT is enabled but no PEFT config provided. Using default mode.')
+                _peft_config = None
+            else:
+                _peft_config = asdict(peft_config)
         
         config = {
             'api_key': self.api_key,
@@ -148,7 +169,7 @@ class Client:
             'dataset_name': dataset_name,
             'args': {
                 'use_peft': use_peft,
-                'peft_config': peft_config,
+                'peft_config': _peft_config,
                 'lr': learning_rate,
                 'keys': keys,
                 'template': template,
@@ -171,7 +192,8 @@ class Client:
                 'gradient_accumulation_steps': gradient_accumulation_steps,
                 'per_device_batch_size': per_device_batch_size,
                 'from_hf': from_hf,
-                'data': data
+                'data': data,
+                'eval_accumulation_steps':eval_accumulation_steps
             }
         }
         send_train_query(config, url=self.url)
