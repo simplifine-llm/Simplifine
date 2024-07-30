@@ -182,7 +182,14 @@ class Client:
             raise Exception('Zero and PEFT cannot be used together. Please choose one. We are working hard on this')
         if use_ddp and use_gradient_checkpointing:
             raise Exception('DDP and gradient checkpointing cannot be used together. Please choose one.')
-
+        # SFT specfic checks
+        if response_template == '':
+            raise Exception('Please provide a response template for the model to train.')
+        if prompt_template == '':
+            raise Exception('Please provide a prompt template for the model to train.')
+        if response_template not in template:
+            raise Exception('Response template not found in the main template.')
+        
         # check for peft and peft config
         if use_peft:
             if peft_config is None:
