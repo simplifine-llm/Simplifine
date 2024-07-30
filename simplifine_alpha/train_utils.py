@@ -15,12 +15,14 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
-from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
+from train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
 import zipfile
 import os
-from .url_class import url_config
-from dataclasses import asdict
+from url_class import url_config
+from dataclasses import asdict, fields
 import warnings
+from peft import LoraConfig
+
 
 class Client:
     def __init__(self, api_key:str='', gpu_type:str=''):
@@ -77,6 +79,14 @@ class Client:
             gradient_accumulation_steps (int): The number of gradient accumulation steps.
         """
 
+        # client side checks
+        if use_zero and use_ddp:
+            raise Exception('Zero and DDP cannot be used together. Please choose one.')
+        if use_zero and use_peft:
+            raise Exception('Zero and PEFT cannot be used together. Please choose one. We are working hard on this')
+        if use_ddp and use_gradient_checkpointing:
+            raise Exception('DDP and gradient checkpointing cannot be used together. Please choose one.')
+
         # check for peft and peft config
         if use_peft:
             if peft_config is None:
@@ -84,6 +94,18 @@ class Client:
                 _peft_config = None
             else:
                 _peft_config = asdict(peft_config)
+                # Convert target_modules to a list if it is a set
+                if 'target_modules' in _peft_config and isinstance(_peft_config['target_modules'], set):
+                    _peft_config['target_modules'] = list(_peft_config['target_modules'])
+                
+                # Get the valid fields of LoraConfig
+                valid_fields = {f.name for f in fields(LoraConfig)}
+
+                # Filter the dictionary to include only valid fields
+                _peft_config = {k: v for k, v in _peft_config.items() if k in valid_fields}
+
+                # Debug print statement
+                print(f"PEFT config: {_peft_config}")
 
 
         
@@ -153,6 +175,14 @@ class Client:
 
         """
 
+        # client side checks
+        if use_zero and use_ddp:
+            raise Exception('Zero and DDP cannot be used together. Please choose one.')
+        if use_zero and use_peft:
+            raise Exception('Zero and PEFT cannot be used together. Please choose one. We are working hard on this')
+        if use_ddp and use_gradient_checkpointing:
+            raise Exception('DDP and gradient checkpointing cannot be used together. Please choose one.')
+
         # check for peft and peft config
         if use_peft:
             if peft_config is None:
@@ -163,6 +193,15 @@ class Client:
                 # Convert target_modules to a list if it is a set
                 if 'target_modules' in _peft_config and isinstance(_peft_config['target_modules'], set):
                     _peft_config['target_modules'] = list(_peft_config['target_modules'])
+                
+                # Get the valid fields of LoraConfig
+                valid_fields = {f.name for f in fields(LoraConfig)}
+
+                # Filter the dictionary to include only valid fields
+                _peft_config = {k: v for k, v in _peft_config.items() if k in valid_fields}
+
+                # Debug print statement
+                print(f"PEFT config: {_peft_config}")
             
         config = {
             'api_key': self.api_key,
