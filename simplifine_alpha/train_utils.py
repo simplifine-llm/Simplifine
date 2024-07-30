@@ -185,11 +185,11 @@ class Client:
         # SFT specfic checks
         if response_template == '':
             raise Exception('Please provide a response template for the model to train.')
-        if prompt_template == '':
+        if template == '':
             raise Exception('Please provide a prompt template for the model to train.')
         if response_template not in template:
             raise Exception('Response template not found in the main template.')
-        
+    
         # check for peft and peft config
         if use_peft:
             if peft_config is None:
@@ -209,6 +209,9 @@ class Client:
 
                 # Debug print statement
                 print(f"PEFT config: {_peft_config}")
+        else:
+            _peft_config = None
+            
             
         config = {
             'api_key': self.api_key,
