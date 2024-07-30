@@ -160,7 +160,10 @@ class Client:
                 _peft_config = None
             else:
                 _peft_config = asdict(peft_config)
-        
+                # Convert target_modules to a list if it is a set
+                if 'target_modules' in _peft_config and isinstance(_peft_config['target_modules'], set):
+                    _peft_config['target_modules'] = list(_peft_config['target_modules'])
+            
         config = {
             'api_key': self.api_key,
             'job_name': job_name,
