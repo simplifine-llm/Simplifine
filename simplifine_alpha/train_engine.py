@@ -46,6 +46,13 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import json
 import os
+from dataclasses import dataclass
+
+@dataclass
+class wandbConfig:
+    wandb_api_key:str
+    project:str
+    config:dict
 
 
 
@@ -676,7 +683,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
            lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:', eval_steps:int=10,
            use_peft:bool=False, peft_config=None, ddp:bool=False, zero:bool=True, deepspeed_config:str='home/ubuntu/src/zero_config.json',
            hf_token:str='', gradient_accumulation_steps:int=1, fp16:bool=False, bf16:bool=False, report_to:str='none',
-            gradient_checkpointing:bool=False, max_seq_length:int=2048, use_wandb:bool=False, output_dir:str='sft_output', eval_accumulation_steps:int=8):
+            gradient_checkpointing:bool=False, max_seq_length:int=2048, use_wandb:bool=False, output_dir:str='sft_output', eval_accumulation_steps:int=8, wandb_config:wandbConfig=None):
     
     """
     Execute the SFT (Supervised Finetuning) process using Hugging Face Transformers.
@@ -741,9 +748,11 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     
     # init wandb
     if report_to == 'wandb':
+        wandb_api_key = wandb_config.api_key
+        project = wandb_config.project
+        config = wandb_config.config
         wandb.login(key=wandb_api_key)
-        wandb.init(project="sft_train", config={"model_name": model_name,
-                                                   'epochs': num_epochs})
+        wandb.init(project=project, config=config)
     
     # initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
@@ -851,10 +860,15 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
             )
     
     # initialize the model
-    model = AutoModelForCausalLM.from_pretrained(model_name, 
+    if device_name == 'cuda':
+        model = AutoModelForCausalLM.from_pretrained(model_name, 
                                                  token = hf_token,
                                                  attn_implementation="flash_attention_2",
                                                  torch_dtype=torch.float16)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                 token = hf_token,
+                                                 torch_dtype=torch.float32)
     model.resize_token_embeddings(len(tokenizer))
 
     # if peft is enabled, use the peft model
@@ -994,7 +1008,7 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
                     num_epochs:int=3, batch_size:int=8, fp16:bool=False, bf16:bool=False,
                     lr:float=5e-5, from_hf:bool=True, do_split:bool=True, split_ratio:float=0.2,
                     gradient_accumulation_steps:int=4, gradient_checkpointing:bool=False,
-                    report_to:str='none', wandb_api_key:str='',
+                    report_to:str='none', wandb_api_key:str='', wandb_config:wandbConfig=None,
                     use_peft:bool=False, peft_config=None, hf_token:str='',
                     hf_column:str='text', lr_scheduler_type:str='linear', eval_accumulation_steps:int=8,
                     output_dir:str='clm_output', ddp:bool=False, zero:bool=True):
@@ -1065,9 +1079,11 @@ def hf_clm_train(model_name:str='', dataset_name:str="",
 
     # init wandb
     if report_to == 'wandb':
+        wandb_api_key = wandb_config.api_key
+        project = wandb_config.project
+        config = wandb_config.config
         wandb.login(key=wandb_api_key)
-        wandb.init(project="clm_train", config={"model_name": model_name,
-                                                   'epochs': num_epochs})
+        wandb.init(project=project, config=config)
 
     # intialize the device  
     device, deivce_name = init_device()

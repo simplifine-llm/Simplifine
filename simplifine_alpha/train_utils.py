@@ -22,6 +22,13 @@ from .url_class import url_config
 from dataclasses import asdict, fields
 import warnings
 from peft import LoraConfig
+from dataclasses import dataclass
+
+@dataclass
+class wandbConfig:
+    wandb_api_key:str
+    project:str
+    config:dict
 
 
 class Client:
@@ -37,6 +44,7 @@ class Client:
         else:
             print('GPU type not recognized. currently accepted versions are "a100" or "l4". Using default L4 server.')
             self.url = url_config.url
+        self.wandb_config = None
 
 
     def cls_train_cloud(self, job_name:str='', dataset_name:str='', model_name:str='', 
@@ -106,6 +114,13 @@ class Client:
 
                 # Debug print statement
                 print(f"PEFT config: {_peft_config}")
+        
+        # check for wandb config
+        if report_to == 'wandb' or self.wandb_config is not None:
+            _wandb_config = self.wandb_config
+            _wandb_config = asdict(_wandb_config)
+        else:
+            _wandb_config = None
 
 
         
@@ -138,7 +153,8 @@ class Client:
                 'from_hf': from_hf,
                 'hf_column': hf_column,
                 'lr_scheduler_type': lr_scheduler_type,
-                'eval_accumulation_steps': eval_accumulation_steps
+                'eval_accumulation_steps': eval_accumulation_steps,
+                'wandb_config': _wandb_config
             }
         }
         send_train_query(config, url=self.url)
@@ -211,7 +227,13 @@ class Client:
                 print(f"PEFT config: {_peft_config}")
         else:
             _peft_config = None
-            
+        
+        # check for wandb config
+        if report_to == 'wandb' or self.wandb_config is not None:
+            _wandb_config = self.wandb_config
+            _wandb_config = asdict(_wandb_config)
+        else:
+            _wandb_config = None
             
         config = {
             'api_key': self.api_key,
@@ -245,7 +267,8 @@ class Client:
                 'per_device_batch_size': per_device_batch_size,
                 'from_hf': from_hf,
                 'data': data,
-                'eval_accumulation_steps':eval_accumulation_steps
+                'eval_accumulation_steps':eval_accumulation_steps,
+                'wandb_config': _wandb_config
             }
         }
         send_train_query(config, url=self.url)
