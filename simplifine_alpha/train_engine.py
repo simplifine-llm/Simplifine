@@ -860,6 +860,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
             )
     
     # initialize the model
+    device, device_name = init_device()
     if device_name == 'cuda':
         model = AutoModelForCausalLM.from_pretrained(model_name, 
                                                  token = hf_token,
@@ -875,7 +876,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     if use_peft:
         model = get_peft_model(model, peft_config=peft_config)
 
-    device, device_name = init_device()
+    
     if torch.cuda.device_count() > 1:
         if ddp and zero:
             raise ValueError('Zero optimization and DDP cannot be used together')
