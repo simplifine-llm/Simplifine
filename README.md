@@ -42,43 +42,9 @@ pip install git+https://github.com/simplifine-llm/Simplifine.git
 
 ## 🏁 Quickstart
 
-For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/sft_quick_start.ipynb) in the examples folder:
+For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb) in the examples folder:
 
-```python
-from simplifine_alpha import train_engine
-import time
-
-alpaca_template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
-
-### Instruction:
-{instruction}
-
-### Input:
-{input}
-
-### Response:
-{output}"""
-
-alpaca_keys = ['instruction', 'input', 'output']
-
-print("Training model...")
-
-train_engine.hf_sft(
-    model_name='unsloth/llama-3-8b-bnb-4bit',
-    dataset_name='yahma/alpaca-cleaned',
-    keys=alpaca_keys,
-    template=alpaca_template,
-    num_epochs=1,
-    batch_size=2,
-    lr=2e-4,
-    from_hf=True,
-    response_template='### Response:',
-    use_peft=False,
-    peft_config=None,
-    ddp=False,
-    zero=True
-)
-```
+Further examples on how to use train engine are also located in the examples folder.
 
 ## 🤝 Contributing
 
@@ -96,3 +62,22 @@ Find our full documentation at [docs.simplifine.com](http://docs.simplifine.com)
 
 Please raise issues for any new features you would like to see implemented—we will work hard to make it happen ASAP! For any other questions, contact us at [founders@simplifine.com](mailto:founders@simplifine.com).
 
+## ⛮ General comput considerations
+We currently support DistributedDataParallel (DDP) and ZeRO from DeepSpeed. **TL;DR** DDP is usefull when a model can fit on GPU memory (this includes gradients and activation states), and ZeRO is usefull when model requires sharding across multiple GPUs.
+
+**Longer** **Version**: **DDP** creates a replica on each processor (GPU). Imagine 8 GPUs, each being fed with a single data point. This would make a batch size of 8. The model replicas are then updated on each device. DDP speeds up training via parallelising the data-feeding process. DDP **fails** if the replica cannot fit in the GPU memory. Note that the memory does not only host parameters, but gradients and optizmier states. 
+
+**ZeRO** is a powerfull optimization developed by DeepSpeed. It comes in different stages (1,2 and 3). Each stage shards the different parts of the training process (params, grads, activation states). This is really usefull if a model cannot fit on the GPU memory. ZeRO also supports offloading to the CPU, which makes even more room for training larger models. 
+
+Here are some examples and the appropriate optimization method:
+  1. A llama-3-8b model with 16 bit percision: ZeRO stage 3 on 8 A100s.
+  2. A llama-3-8b model with LoRA adapters: Usually fine with DDP on A100s.
+  3. A GPT-2 with 16 bit percision: DDP
+
+## 🪲 FAQs and bugs
+**RuntimeError: Error building extension 'cpu_adam' python dev**: This happens when python-dev is not installed and offload is being used by ZeRO. simple try 
+```python
+sudo apt-get install python-dev   # for python2.x installs
+sudo apt-get install python3-dev  # for python3.x installs
+```
+See this [link](https://stackoverflow.com/questions/21530577/fatal-error-python-h-no-such-file-or-directory)

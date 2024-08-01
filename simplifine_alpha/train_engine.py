@@ -25,8 +25,7 @@ from transformers import AutoModelForSequenceClassification
 from torch.utils.data import DataLoader
 from datasets import load_dataset, Dataset
 from peft import get_peft_model, LoraConfig, TaskType
-from accelerate import Accelerator
-from sentence_transformers import SentenceTransformerModelCardData, SentenceTransformer
+from sentence_transformers import SentenceTransformer
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.evaluation import (
     InformationRetrievalEvaluator,
@@ -214,6 +213,19 @@ def hf_finetune_embedder_contrastive(model_name:str, dataset_name:str='',
     Notes:
     - This function assumes that `transformers`, `datasets`, `sentence_transformers`, and `torch` are installed.
     - It also assumes that the required classes such as `SentenceTransformerTrainer` and `MatryoshkaLoss` are defined/imported correctly.
+    - Best format is as follows:
+            Inputs:
+        +-----------------------------------------------+------------------------------+
+        | Texts                                         | Labels                       |
+        +===============================================+==============================+
+        | (anchor, positive/negative) pairs             | 1 if positive, 0 if negative |
+        +-----------------------------------------------+------------------------------+
+        example:
+        dataset_train_v2 = Dataset.from_dict({
+                "sentence1": ["It's nice weather outside today.", "He drove to work."],
+                "sentence2": ["It's so sunny.", "She walked to the store."],
+                "label": [1, 0],
+            })
     """
     
     device_name = None
@@ -661,10 +673,10 @@ def cleanup():
 def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
            keys:list=[], template:str='', do_split:bool=True, split_ratio:float=0.2, load_eval_from_data:bool=False, 
            data:dict={}, num_epochs:int=3, batch_size:int=1, wandb_api_key:str='',
-           lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:',
+           lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:', eval_steps:int=10,
            use_peft:bool=False, peft_config=None, ddp:bool=False, zero:bool=True, deepspeed_config:str='home/ubuntu/src/zero_config.json',
            hf_token:str='', gradient_accumulation_steps:int=1, fp16:bool=False, bf16:bool=False, report_to:str='none',
-            gradient_checkpointing:bool=False, max_seq_length:int=2048, use_wandb:bool=False, output_dir:str='sft_output'):
+            gradient_checkpointing:bool=False, max_seq_length:int=2048, use_wandb:bool=False, output_dir:str='sft_output', eval_accumulation_steps:int=8):
     
     """
     Execute the SFT (Supervised Finetuning) process using Hugging Face Transformers.
@@ -737,8 +749,30 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    
     tokenizer.padding_side = "right"
+
+    # replacing the response template, with chat/instruction based tokens.
+    # tokenizing response tempaltes in context can be different to ones without it
+    if tokenizer.chat_template:
+        # dummy messages to extract chat tokens
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant."
+            },
+            {
+                "role": "user",
+                "content": "Who won the world series in 2020?"
+            },
+            {
+                "role": "assistant",
+                "content": "The Los Angeles Dodgers won the World Series in 2020."
+            }
+    ]   
+        text = tokenizer.apply_chat_template(messages, tokenize=False)
+        chat_temp = text.split(messages[1]['content'])[-1].split(messages[-1]['content'])[0]
+        chat_response_temp = chat_temp.replace(tokenizer.eos_token,'')
+
 
     if from_hf:
         try:
@@ -780,28 +814,53 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
         if not all(isinstance(text, str) for text in output_texts):
             raise ValueError("Formatted text must be a list of strings")
 
-        tokenized_output = tokenizer(output_texts, truncation=False, add_special_tokens=False)
-        
+        filtered_output_texts = []
+        for text in output_texts:
+            tokenized_output = tokenizer(text, truncation=False, add_special_tokens=False)
+            if len(tokenized_output['input_ids']) <= tokenizer.model_max_length:
+                filtered_output_texts.append(text)
+    
+        # Ensure that there's at least one text to process
+        if not filtered_output_texts:
+            return {'input_ids': [], 'attention_mask': []}
+    
+        tokenized_output = tokenizer(filtered_output_texts, truncation=True, padding='max_length', add_special_tokens=True)
+
         return tokenized_output
 
-    collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
-
+    if tokenizer.chat_template:
+        collator = DataCollatorForCompletionOnlyLM(chat_response_temp, tokenizer=tokenizer)
+    else:
+        collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+ 
     promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets['train'].column_names)
     promptTokenizedDataset = promptTokenizedDataset.shuffle(len(promptTokenizedDataset))
 
+    # initialize the peft config
     if use_peft:
         if not peft_config:
+            target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",]
+
             peft_config = LoraConfig(
                 r=16,
                 lora_alpha=32,
                 lora_dropout=0.05,
                 bias="none",
                 task_type="CAUSAL_LM",
+                target_modules=target_modules,
             )
     
     # initialize the model
-    model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
+    model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                 token = hf_token,
+                                                 attn_implementation="flash_attention_2",
+                                                 torch_dtype=torch.float16)
     model.resize_token_embeddings(len(tokenizer))
+
+    # if peft is enabled, use the peft model
+    if use_peft:
+        model = get_peft_model(model, peft_config=peft_config)
+
     device, device_name = init_device()
     if torch.cuda.device_count() > 1:
         if ddp and zero:
@@ -830,7 +889,9 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             gradient_checkpointing=gradient_checkpointing,
                             max_seq_length = max_seq_length,
                             report_to=report_to,
-                            remove_unused_columns=False
+                            remove_unused_columns=False,
+                            eval_steps=eval_steps,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
         elif zero:
             # sft_config = SFTConfig(
@@ -862,7 +923,8 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             logging_steps=20,
                             max_seq_length = max_seq_length,
                             save_steps=50,
-                            eval_steps=1)
+                            eval_steps=1,
+                            eval_accumulation_steps=eval_accumulation_steps)
         else:
             sft_config = SFTConfig(
                             output_dir=output_dir,
@@ -875,7 +937,9 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             gradient_accumulation_steps=gradient_accumulation_steps,
                             gradient_checkpointing=gradient_checkpointing,
                             max_seq_length = max_seq_length,
-                            report_to=report_to
+                            report_to=report_to,
+                            eval_steps=eval_steps,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
     else:
         model.to(device)
@@ -894,21 +958,28 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             gradient_checkpointing=gradient_checkpointing,
                             max_seq_length = max_seq_length,
                             report_to=report_to,
-                            remove_unused_columns=True
+                            remove_unused_columns=True,
+                            eval_steps=eval_steps,
+                            eval_accumulation_steps=eval_accumulation_steps
                                     )
-    trainer = SFTTrainer(
-    model,
-    tokenizer=tokenizer,
-    train_dataset=promptTokenizedDataset['train'],
-    args=sft_config,
-    formatting_func=formatting_prompts_func,
-    data_collator=collator,
-    )
+    
+    
+    if do_split:
+        trainer = SFTTrainer(
+        model,
+        tokenizer=tokenizer,
+        train_dataset=promptTokenizedDataset['train'],
+        eval_dataset=promptTokenizedDataset['test'],
+        args=sft_config,
+        formatting_func=formatting_prompts_func,
+        data_collator=collator
+        )
 
     # creating a directory in ouput dir for final model saving
     output_dir_final = os.path.join(output_dir, 'final_model')
     if not os.path.exists(output_dir_final):
-        os.makedirs(output_dir_final)
+        os.makedirs(output_dir_final, exist_ok=True)
+
 
     trainer.train()
     trainer.save_model(output_dir_final)
@@ -918,15 +989,14 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
 
     
 
-# TODO: complete this
-def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair",
-                    context_length:int=128, string_data:list=[],
-                    num_epochs:int=3, batch_size:int=8,
-                    lr:float=5e-5, from_hf:bool=True,
-                    inputs:list=[], 
-                    use_peft:bool=False, peft_config=None,
-                    distributed:bool=True, accelerator=None,
-                    from_scratch:bool=False, train_test_split_ratio:int=0.2,
+def hf_clm_train(model_name:str='', dataset_name:str="",
+                    context_length:int=128, data:list=[],
+                    num_epochs:int=3, batch_size:int=8, fp16:bool=False, bf16:bool=False,
+                    lr:float=5e-5, from_hf:bool=True, do_split:bool=True, split_ratio:float=0.2,
+                    gradient_accumulation_steps:int=4, gradient_checkpointing:bool=False,
+                    report_to:str='none', wandb_api_key:str='',
+                    use_peft:bool=False, peft_config=None, hf_token:str='',
+                    hf_column:str='text', lr_scheduler_type:str='linear', eval_accumulation_steps:int=8,
                     output_dir:str='clm_output', ddp:bool=False, zero:bool=True):
     
     """
@@ -937,7 +1007,7 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     model_name : str
         The name or path of the pre-trained model to use.
     dataset_name : str, optional
-        The name of the dataset to use for training. Default is 'ali77sina/SEC-qa-pos-neg-pair'.
+        The name of the dataset to use for training. 
     context_length : int, optional
         Maximum length of the input sequences. Default is 128.
     string_data : List[str], optional
@@ -983,47 +1053,165 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     - It supports distributed training using DDP or zero optimization if configured.
     """
 
+    # Ensure no default process group exists
+    if dist.is_initialized():
+        print("Destroying existing process group")
+        dist.destroy_process_group()
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
-    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    
+
+    # init wandb
+    if report_to == 'wandb':
+        wandb.login(key=wandb_api_key)
+        wandb.init(project="clm_train", config={"model_name": model_name,
+                                                   'epochs': num_epochs})
+
+    # intialize the device  
     device, deivce_name = init_device()
 
-      
+    # initialize the peft config
+    if use_peft:
+        if not peft_config:
+            target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",]
 
+            peft_config = LoraConfig(
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.05,
+                bias="none",
+                task_type="CAUSAL_LM",
+                target_modules=target_modules,
+            )
+
+    # load the dataset
+    if not from_hf: 
+        raw_dataset = Dataset.from_dict({'text': data})
+        if do_split:
+            raw_dataset = raw_dataset.train_test_split(split_ratio)
+    else:
+        try:
+            raw_dataset = load_dataset(dataset_name, token=False, split='train')
+        except Exception as e:
+            print(f'Error: {e}, this is because the split parameter is not available')
+            raw_dataset = load_dataset(dataset_name, token=False)
+        raw_dataset = raw_dataset.rename_column(hf_column, 'text')
+        if do_split:
+            raw_dataset = raw_dataset.train_test_split(split_ratio)
     
+
+    # initialize the model
+    model = AutoModelForCausalLM.from_pretrained(model_name, token = hf_token)
+    model.resize_token_embeddings(len(tokenizer))
+
+    # if peft is enabled, use the peft model
+    if use_peft:
+        model = get_peft_model(model, peft_config=peft_config)
+
+    device, device_name = init_device()
     if torch.cuda.device_count() > 1:
+        if ddp and zero:
+            raise ValueError('Zero optimization and DDP cannot be used together')
+        
         if ddp:
-          dist.init_process_group("nccl")
-          rank = dist.get_rank()
-          model = AutoModelForCausalLM.from_pretrained(model_name, attn_implementation="flash_attention_2")
-          print(f"Start running basic DDP example on rank {rank}.")
-          device_id = rank % torch.cuda.device_count()
-          model = model.to(device_id)
-          ddp_model = DDP(model, device_ids=[device_id])
-
-          distributed = True
-          model = ddp_model
-
+            if not dist.is_initialized():
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
+                
+            rank = dist.get_rank()
+            device_id = rank % torch.cuda.device_count()
+            model = model.to(device_id)
+            model = DDP(model, device_ids=[device_id])
+            distributed = True
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                            lr_scheduler_type=lr_scheduler_type,
+                            eval_accumulation_steps=eval_accumulation_steps
+                                    )
+        elif zero:
+            # sft_config = SFTConfig(
+            #                 output_dir=output_dir,
+            #                 deepspeed='/home/ubuntu/src/zero_config.json',
+            #                 per_device_train_batch_size = batch_size,
+            #                 per_device_eval_batch_size = batch_size,
+            #                 num_train_epochs= num_epochs,
+            #                 fp16=fp16,
+            #                 bf16=bf16,
+            #                 learning_rate=lr,
+            #                 gradient_accumulation_steps=gradient_accumulation_steps,
+            #                 gradient_checkpointing=gradient_checkpointing,
+            #                 max_seq_length = max_seq_length,
+            #                 report_to=report_to
+            #                         )
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            deepspeed="/home/ubuntu/src/zero_config.json",
+                            per_device_train_batch_size = 1,
+                            per_device_eval_batch_size = 1,
+                            num_train_epochs= 1,
+                            fp16=True,
+                            learning_rate=2e-5,
+                            gradient_accumulation_steps=4,
+                            report_to='none',
+                            gradient_checkpointing=True,
+                            remove_unused_columns=False,
+                            logging_steps=20,
+                            save_steps=50,
+                            eval_steps=1,
+                            lr_scheduler_type=lr_scheduler_type,
+                            eval_accumulation_steps=eval_accumulation_steps
+                            )
         else:
-          model = AutoModelForCausalLM.from_pretrained(model_name)
-
-
-
-
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                            lr_scheduler_type=lr_scheduler_type,
+                            eval_accumulation_steps=eval_accumulation_steps
+                                    )
     else:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
+        model.to(device)
         distributed = False
-
-
-    if not from_hf:
-        raw_dataset = Dataset.from_dict({'text': string_data})
-        raw_dataset = raw_dataset.train_test_split(train_test_split_ratio)
-    else:
-        raw_dataset = load_dataset(dataset_name)
-        raw_dataset = raw_dataset['train'].train_test_split(train_test_split_ratio)
-        raw_dataset = raw_dataset.rename_column('pos_passage', 'text')
+        if device_name == 'mps':
+            fp16 = False
+            bf16 = False
+        TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                            lr_scheduler_type=lr_scheduler_type,
+                            eval_accumulation_steps=eval_accumulation_steps
+                                    )
 
 
     def tokenize(element):
@@ -1046,72 +1234,27 @@ def hf_clm_train(model_name:str, dataset_name:str="ali77sina/SEC-qa-pos-neg-pair
     tokenized_datasets = raw_dataset.map(
     tokenize, batched=True, remove_columns=raw_dataset['train'].column_names
     )
-    print(tokenized_datasets)
-    
-    
 
-    # Start Training
-    if not zero:
-
-      args = TrainingArguments(
-      output_dir=output_dir,
-      per_device_train_batch_size=16,
-      per_device_eval_batch_size=16,
-      evaluation_strategy="steps",
-      eval_steps=1500,
-      logging_steps=250,
-      gradient_accumulation_steps=8,
-      num_train_epochs=1,
-      weight_decay=0.1,
-      warmup_steps=500,
-      lr_scheduler_type="cosine",
-      learning_rate=lr,
-      save_steps=250,
-      fp16=True,
-      push_to_hub=False,
-      remove_unused_columns=False
-      )
-    
-    else:
-
-      args = TrainingArguments(
-      output_dir=output_dir,
-      per_device_train_batch_size=16,
-      per_device_eval_batch_size=16,
-      evaluation_strategy="steps",
-      eval_steps=1500,
-      logging_steps=250,
-      gradient_accumulation_steps=1,
-      num_train_epochs=1,
-      weight_decay=0.1,
-      warmup_steps=500,
-      lr_scheduler_type="cosine",
-      learning_rate=lr,
-      save_steps=250,
-      fp16=True,
-      push_to_hub=False,
-      remove_unused_columns=False,
-      deepspeed='/home/ubuntu/src/zero_config.json'
-      )
 
     trainer = Trainer(
     model=model,
     tokenizer=tokenizer,
-    args=args,
+    args=TrainArgs,
     data_collator=data_collator,
     train_dataset=tokenized_datasets["train"],
     eval_dataset=tokenized_datasets["test"],
     )
 
-     # creating a directory in ouput dir for final model saving
+    # creating a directory in ouput dir for final model saving
     output_dir_final = os.path.join(output_dir, 'final_model')
     if not os.path.exists(output_dir_final):
-        os.makedirs(output_dir_final)
-
+        os.makedirs(output_dir_final, exist_ok=True)
+    
+    trainer.train()
     trainer.save_model(output_dir_final)
-
+    
     if ddp:
-        dist.destroy_process_group()
+      dist.destroy_process_group()
 
 
 
@@ -1225,12 +1368,14 @@ def hf_clf_multi_label_train(model_name:str, dataset_name:str='',
     trainer.train()
 
 
-def hf_clf_train(model_name:str, dataset_name:str='', 
+def hf_clf_train(model_name:str, dataset_name:str='', hf_data_column:str='', hf_label_column:str='',
                  num_epochs:int=3, batch_size:int=8, 
-                 lr:float=5e-5, from_hf:bool=True,
-                 inputs:list=[], labels:list=[],
-                 use_peft:bool=False, peft_config=None,
-                 accelerator=None, use_wandb = False):
+                 lr:float=5e-5, from_hf:bool=True, hf_token:str='',
+                 inputs:list=[], labels:list=[], output_dir:str='clf_output',
+                 use_peft:bool=False, peft_config=None, 
+                 report_to='none', wandb_api_key:str='',
+                 ddp:bool=False, zero:bool=False, fp16:bool=False, bf16:bool=False,
+                 gradient_accumulation_steps:int=1, gradient_checkpointing:bool=False):
 
     """
 Train a sequence classification model using Hugging Face transformers.
@@ -1300,139 +1445,173 @@ Notes:
 - WandB integration (`use_wandb=True`) enables logging of training metrics and progress.
 """
 
-    device, deivce_name = init_device()
+    # Ensure no default process group exists
+    if dist.is_initialized():
+        print("Destroying existing process group")
+        dist.destroy_process_group()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
+
+    # init wandb
+    if report_to == 'wandb':
+        wandb.login(key=wandb_api_key)
+        wandb.init(project="clm_train", config={"model_name": model_name,
+                                                   'epochs': num_epochs})
+
+    device, deivce_name = init_device()
     
 
     def tokenize_function(examples):
-        return tokenizer(examples["text"], padding="max_length", truncation=True)
+        try:
+            texts = examples["text"]
+            # Ensure texts is a list of strings
+            if not isinstance(texts, list):
+                texts = [texts]
+            return tokenizer(texts, padding="max_length", truncation=True)
+        except Exception as e:
+            print(f"Error during tokenization: {e}")
+            print(f"Input data: {examples['text']}")
+            raise
     
     
     if from_hf:
         dataset = load_dataset(dataset_name)
-        dataset = dataset['train'][:10000]
-        num_labels = len(set(dataset['label']))
-        dataset = Dataset.from_dict(dataset)
-        tokenized_datasets = dataset.map(tokenize_function, batched=True)
-        tokenized_datasets = tokenized_datasets.remove_columns(["text"])
-        tokenized_datasets.set_format("torch")
-        tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
-        
-
+        # load the train split if exists
+        if 'train' in dataset:
+            dataset = dataset['train']
+        inputs = dataset[hf_data_column]
+        labels = dataset[hf_label_column]
+        tokenized_datasets = Dataset.from_dict({'text':inputs, 'label':labels})
     else:
         tokenized_datasets = Dataset.from_dict({'text':inputs, 'label':labels})
-        num_labels = len(set(labels))
-        tokenized_datasets = tokenized_datasets.map(tokenize_function, batched=True)
-        tokenized_datasets = tokenized_datasets.remove_columns(["text"])
-        tokenized_datasets.set_format("torch")
-        tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
+
+    print(tokenized_datasets)
+    num_labels = len(set(labels))
+    tokenized_datasets = tokenized_datasets.map(tokenize_function, batched=True)
+    tokenized_datasets = tokenized_datasets.remove_columns(["text"])
+    tokenized_datasets.set_format("torch")
+    tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
     
     tokenized_datasets = tokenized_datasets.train_test_split(0.2)
-    small_train_dataset = tokenized_datasets["train"].shuffle(seed=42)
-    small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42)
 
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
+    print(tokenized_datasets)
+
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels, token = hf_token)
     model.config.pad_token_id = model.config.eos_token_id
 
-    train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=8)
-    eval_dataloader = DataLoader(small_eval_dataset, batch_size=8)
 
-    optimizer = AdamW(model.parameters(), lr=1e-5)
-
-    num_epochs = 3
-    num_training_steps = num_epochs * len(train_dataloader)
-    lr_scheduler = get_scheduler(
-    name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps
-    )
     model.to(device)  
     distributed = False
-    if torch.cuda.device_count() > 1:
-        distributed = True
-        model = torch.nn.DataParallel(model)
-    
+    # if peft is enabled, use the peft model
     if use_peft:
-        if peft_config is None:
+        if not peft_config:
             peft_config = LoraConfig(
-            task_type=TaskType.SEQ_CLS, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.05,
+                bias="none",
+                task_type="CAUSAL_LM",
             )
-        model = get_peft_model(model, peft_config)
+        model = get_peft_model(model, peft_config=peft_config)
+        
 
-    progress_bar = tqdm(range(num_training_steps))
-
-    
-    if use_wandb:
-        wandb.init(project="hf_clf_train", config={"model_name": model_name,
-                                                   'epochs': num_epochs})
-
-    model.train()
-    running_loss=0.0
-    if distributed == False:
-        for epoch in range(num_epochs):
-            for num,batch in enumerate(train_dataloader):
-                batch = {k: v.to(device) for k, v in batch.items()}
-                outputs = model(**batch)
-                loss = outputs.loss
-                loss.backward()
-
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
-                progress_bar.update(1)
-                running_loss += loss.item()
-                 # optional, wandb logging
-                if num%50 == 0 and use_wandb:
-                    
-                    # ---
-                    correct = 0
-                    total = 0
-                    val_loss = 0.0
-                    with torch.no_grad():
-                        for data in eval_dataloader:
-                            labels = data['labels'].to(device)
-                            batch = {k: v.to(device) for k, v in data.items()}
-                            outputs = model(**batch)
-                            predicted = torch.argmax(outputs.logits, dim = -1)
-                            total += len(labels)
-                            # TODO: this is overhead and will be slow.
-                            correct += (predicted == labels).sum().item()
-                            val_loss += loss.item()
-                    if use_wandb:
-                        wandb.log({"loss_train": running_loss/50, 'batch': num, 'epoch': epoch, 'accuracy_val': 100 * correct / total, 'loss_val': val_loss/50})
-                    running_loss=0.0
-
+    device, device_name = init_device()
+    if torch.cuda.device_count() > 1:
+        if ddp and zero:
+            raise ValueError('Zero optimization and DDP cannot be used together')
+        
+        if ddp:
+            if not dist.is_initialized():
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
+                
+            rank = dist.get_rank()
+            device_id = rank % torch.cuda.device_count()
+            model = model.to(device_id)
+            model = DDP(model, device_ids=[device_id])
+            distributed = True
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                                    )
+        elif zero:
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            deepspeed="/home/ubuntu/src/zero_config.json",
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            report_to=report_to,
+                            gradient_checkpointing=gradient_checkpointing,
+                            remove_unused_columns=False,
+                            )
+        else:
+            TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                                    )
     else:
-        for epoch in range(num_epochs):
-            for num,batch in enumerate(train_dataloader):
-                batch = {k: v.to(device) for k, v in batch.items()}
-                outputs = model(**batch)
-                loss = outputs.loss.mean()
-                loss.backward()
+        model.to(device)
+        distributed = False
+        if device_name == 'mps':
+            fp16 = False
+            bf16 = False
+        TrainArgs = TrainingArguments(
+                            output_dir=output_dir,
+                            per_device_train_batch_size = batch_size,
+                            per_device_eval_batch_size = batch_size,
+                            num_train_epochs= num_epochs,
+                            fp16=fp16,
+                            bf16=bf16,
+                            learning_rate=lr,
+                            gradient_accumulation_steps=gradient_accumulation_steps,
+                            gradient_checkpointing=gradient_checkpointing,
+                            report_to=report_to,
+                            remove_unused_columns=False,
+                                    )
+    
+    trainer = Trainer(
+    model=model,
+    tokenizer=tokenizer,
+    args=TrainArgs,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["test"],
+    )
 
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
-                progress_bar.update(1)
-                running_loss += loss.item()
-                 # optional, wandb logging
-                if num%50 == 0 and use_wandb:
-                    
-                    # ---
-                    correct = 0
-                    total = 0
-                    val_loss = 0.0
-                    with torch.no_grad():
-                        for data in eval_dataloader:
-                            labels = data['labels'].to(device)
-                            batch = {k: v.to(device) for k, v in data.items()}
-                            outputs = model(**batch)
-                            predicted = torch.argmax(outputs.logits, dim = -1)
-                            total += len(labels)
-                            # TODO: this is overhead and will be slow.
-                            correct += (predicted == labels).sum().item()
-                            val_loss += loss.item()
-                    if use_wandb:
-                        wandb.log({"loss_train": running_loss/50, 'batch': num, 'epoch': epoch, 'accuracy_val': 100 * correct / total, 'loss_val': val_loss/50})
-                    running_loss=0.0
+    # creating a directory in ouput dir for final model saving
+    output_dir_final = os.path.join(output_dir, 'final_model')
+    if not os.path.exists(output_dir_final):
+        os.makedirs(output_dir_final, exist_ok=True)
+    
+    trainer.train()
+    trainer.save_model(output_dir_final)
+    
+    if ddp:
+      dist.destroy_process_group()
     

@@ -17,10 +17,9 @@
 '''
 import requests
 import json
-from .url_class import Config
 from tqdm import tqdm
 
-def send_train_query(query:dict={}):
+def send_train_query(query:dict={}, url:str=''):
     """
     Send a training query to the server endpoint.
 
@@ -59,12 +58,11 @@ def send_train_query(query:dict={}):
     - Ensure the server is running and accessible at the specified URL.
     - The headers are set to indicate JSON data.
     """
-    _url = Config.url
-    url = _url + '/query'
+    _url = url + '/query'
     headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
     payload = query # Prepare the payload with the data list
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(_url, headers=headers, data=json.dumps(payload))
         response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
         
         # Return the JSON response from the server
@@ -74,7 +72,7 @@ def send_train_query(query:dict={}):
         # Handle any exceptions that occur during the request
         return {"error": str(e)}
     
-def get_company_status(api_key:str=''):
+def get_company_status(api_key:str='', url:str=''):
     """
     Retrieve the company status from the server endpoint.
 
@@ -114,13 +112,12 @@ def get_company_status(api_key:str=''):
     - The headers are set to indicate JSON data.
     - The 'response' field is extracted from the server's JSON response.
     """
-    _url = Config.url
-    url = _url + '/status'
+    _url = url + '/status'
     headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
     payload = {'api_key':api_key} # Prepare the payload with the data list
 
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(_url, headers=headers, data=json.dumps(payload))
         response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
         
         # Return the JSON response from the server
@@ -130,14 +127,13 @@ def get_company_status(api_key:str=''):
         # Handle any exceptions that occur during the request
         return {"error": str(e)}
 
-def get_job_log(api_key:str='', job_id:str=''):
-    _url = Config.url
-    url = _url + '/job_output_log'
+def get_job_log(api_key:str='', job_id:str='', url:str=''):
+    _url = url + '/job_output_log'
     headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
     payload = {'api_key':api_key, 'job_id':job_id} # Prepare the payload with the data list
 
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(_url, headers=headers, data=json.dumps(payload))
         response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
         
         # Return the JSON response from the server
@@ -147,8 +143,8 @@ def get_job_log(api_key:str='', job_id:str=''):
         # Handle any exceptions that occur during the request
         return {"error": str(e)}
 
-def download_directory(api_key, job_id, save_path):
-    url = 'http://54.221.57.211:5000/download_model'
+def download_directory(api_key, job_id, save_path, url):
+    _url = url + '/download_model'
     payload = {
         "api_key": api_key,
         "job_id": job_id
@@ -158,7 +154,7 @@ def download_directory(api_key, job_id, save_path):
     }
 
     try:
-        response = requests.post(url, json=payload, headers=headers, stream=True)
+        response = requests.post(_url, json=payload, headers=headers, stream=True)
         response.raise_for_status()
 
         # Get total file size from headers
@@ -175,3 +171,24 @@ def download_directory(api_key, job_id, save_path):
         print(f"\nDirectory downloaded successfully and saved to {save_path}")
     except requests.exceptions.RequestException as e:
         print(f"Error occurred: {e}")
+
+def stop_job(api_key:str='', job_id:str='', url:str=''):
+    _url = url + '/stop_job'
+    headers = {'Content-Type': 'application/json'}  # Set the headers to indicate JSON data
+    payload = {'api_key':api_key, 'job_id':job_id}
+    try:
+        response = requests.post(_url, headers=headers, data=json.dumps(payload))
+        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+        
+        # Return the JSON response from the server
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
+
+if __name__ == '__main__':
+    # Example usage of the functions
+    # Set the URL of the server
+    url = "http://18.189.220.250:5000"
+    api_key = 'SimpTest'
+    status = get_company_status(api_key, url)
+    print(status)
