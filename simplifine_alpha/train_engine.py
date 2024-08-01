@@ -989,6 +989,15 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
         formatting_func=formatting_prompts_func,
         data_collator=collator
         )
+    else:
+        trainer = SFTTrainer(
+        model,
+        tokenizer=tokenizer,
+        train_dataset=promptTokenizedDataset,
+        args=sft_config,
+        formatting_func=formatting_prompts_func,
+        data_collator=collator
+        )
 
     # creating a directory in ouput dir for final model saving
     output_dir_final = os.path.join(output_dir, 'final_model')
