@@ -47,6 +47,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import json
 import os
 from dataclasses import dataclass
+from typing import List, Optional
+
 
 @dataclass
 class wandbConfig:
@@ -678,12 +680,22 @@ def cleanup():
         dist.destroy_process_group()
 
 
+@dataclass
+class sftPromptConfig:
+    keys:list
+    template:str
+    response_template:str
+    new_padding_token:Optional[str] = None
+    use_chat_template: Optional[bool] = False
+    system_message_key: Optional[str] = None
+    system_message: Optional[str] = None
+
+
 def sft_train_v2(
-    model_name:str, dataset_name:str='', hf_token:str='', new_padding_token:str=None, dataset_config_name:str=None, data_from_hf:bool=True,
-    keys:list=[], template:str='', response_template:str='', use_chat_tempalte:bool=False, system_message_key:str=None, system_message:str=None,
-    do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, peft_config:LoraConfig=None, 
+    model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
+    do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
     sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
-    use_ddp:bool=False, use_zero:bool=True
+    use_ddp:bool=False, use_zero:bool=True, sft_prompt_config:sftPromptConfig=None
 ): 
     """
     Train a model using the Supervised Finetuning (SFT) process.
@@ -729,7 +741,18 @@ def sft_train_v2(
     - This function initializes a tokenizer, configures SFT parameters, loads the dataset, initializes the model, and starts training using the SFTTrainer.
     - If DDP and Zero optimization are enabled, they cannot be used simultaneously due to conflicting configurations.
     """
-    
+    # parse the sft prompt config
+    new_padding_token = sft_prompt_config.new_padding_token
+    keys = sft_prompt_config.keys
+    template = sft_prompt_config.template
+    response_template = sft_prompt_config.response_template
+    use_chat_template = sft_prompt_config.use_chat_template
+    system_message_key = sft_prompt_config.system_message_key
+    system_message = sft_prompt_config.system_message
+
+    print('\n-------------- sft deepspeed config --------------\n', sft_config.deepspeed)
+    print('\n-------------- use ddp --------------\n', use_ddp)
+    print('\n-------------- use zero --------------\n', use_zero)
     # Ensure no default process group exists
     if dist.is_initialized():
         print("Destroying existing process group")
@@ -737,6 +760,9 @@ def sft_train_v2(
     
     if use_ddp and use_zero:
         raise ValueError("Only one dist method is accepted at once.")
+    
+    if use_ddp:
+        sft_config.deepspeed = None
     
     if response_template not in template:
         raise ValueError('The response template must be in the template')
@@ -746,6 +772,17 @@ def sft_train_v2(
     
     if sft_config is None:
         raise ValueError('SFT config must be provided')
+    
+    if data_from_hf and not dataset_name:
+        raise ValueError('Dataset name must be provided if data is from Hugging Face')
+    
+    # initialize the training arguments
+    if sft_config is None:
+        raise ValueError('SFT config must be provided')
+    
+    if use_ddp and sft_config.gradient_checkpointing:
+        print('[WARNING]: Gradient checkpointing is not supported with DDP. Disabling gradient checkpointing.')
+        sft_config.gradient_checkpointing = False
 
     # initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
@@ -758,7 +795,7 @@ def sft_train_v2(
 
     # replacing the response template, with chat/instruction based tokens.
     # tokenizing response tempaltes in context can be different to ones without it
-    if use_chat_tempalte:
+    if use_chat_template:
             if tokenizer.chat_template:
                 # dummy messages to extract chat tokens
                 messages = [
@@ -781,6 +818,7 @@ def sft_train_v2(
             else:
                 raise ValueError('Tokenizer does not have chat template')
     
+    sft_config.remove_unused_columns=False
     if data_from_hf:
         try:
             if dataset_config_name:
@@ -857,10 +895,10 @@ def sft_train_v2(
 
     # initialize the peft config
     if use_peft:
-        if peft_config is None:
+        if lora_config is None:
             target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",]
 
-            peft_config = LoraConfig(
+            lora_config = LoraConfig(
                 r=16,
                 lora_alpha=32,
                 lora_dropout=0.05,
@@ -873,29 +911,86 @@ def sft_train_v2(
     device, device_name = init_device()
     if device_name == 'cuda':
         model = AutoModelForCausalLM.from_pretrained(model_name, 
-                                                 token = hf_token,
-                                                 attn_implementation="flash_attention_2",
-                                                 torch_dtype=torch.float16)
+                                                 token = hf_token)
     else:
         model = AutoModelForCausalLM.from_pretrained(model_name, 
-                                                 token = hf_token,
-                                                 torch_dtype=torch.float32)
+                                                 token = hf_token)
     model.resize_token_embeddings(len(tokenizer))
 
     # if peft is enabled, use the peft model
     if use_peft:
-        model = get_peft_model(model, peft_config=peft_config)
+        model = get_peft_model(model, peft_config=lora_config)
     
-
-
+    if sft_config.deepspeed is None and use_zero:
+        raise ValueError('Zero optimization requires a DeepSpeed config')
     
+    _is_distritubed = False
+    if torch.cuda.device_count() > 1:
+        if use_ddp and use_zero:
+            raise ValueError('Zero optimization and DDP cannot be used together')
+        if use_ddp:
+            _is_distritubed = True
+            if not dist.is_initialized():
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
 
+            sft_config.ddp_find_unused_parameters=False
+            rank = dist.get_rank()
+            device_id = rank % torch.cuda.device_count()
+            model = model.to(device_id)
+            model = DDP(model, device_ids=[device_id])
+        elif use_zero:
+            _is_distritubed = True
+            if not dist.is_initialized():
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
+            print('using ZeRO optimization')
+        else:
+            # user warning not utilizing DDP or ZeRO for multi-gpu setup
+            print('[WARNING]: multiple GPUs detected, but not using DDP or ZeRO')
+    else:
+        model.to(device)
+        distributed = False
+        if device_name == 'mps':
+            sft_config.fp16 = False
+            sft_config.bf16 = False
+        
+    print(f"train data set is: {promptTokenizedDataset['train']}, eval dataset is {promptTokenizedDataset['test']}")
+    if do_split:
+        trainer = SFTTrainer(
+        model,
+        tokenizer=tokenizer,
+        train_dataset=promptTokenizedDataset['train'],
+        eval_dataset=promptTokenizedDataset['test'],
+        args=sft_config,
+        formatting_func=formatting_prompts_func,
+        data_collator=collator
+        )
+    else:
+        trainer = SFTTrainer(
+        model,
+        tokenizer=tokenizer,
+        train_dataset=promptTokenizedDataset,
+        args=sft_config,
+        formatting_func=formatting_prompts_func,
+        data_collator=collator
+        )
+
+    # creating a directory in ouput dir for final model saving
+    output_dir_final = os.path.join(sft_config.output_dir, 'final_model')
+    if not os.path.exists(output_dir_final):
+        os.makedirs(output_dir_final, exist_ok=True)
+
+    trainer.train()
+    trainer.save_model(output_dir_final)
+
+    if _is_distritubed:
+        dist.destroy_process_group()
     
-
-
-
-
-
 
 def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
            keys:list=[], template:str='', do_split:bool=True, split_ratio:float=0.2, load_eval_from_data:bool=False, 
@@ -1125,20 +1220,6 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             logging_steps=logging_steps
                                     )
         elif zero:
-            # sft_config = SFTConfig(
-            #                 output_dir=output_dir,
-            #                 deepspeed='/home/ubuntu/src/zero_config.json',
-            #                 per_device_train_batch_size = batch_size,
-            #                 per_device_eval_batch_size = batch_size,
-            #                 num_train_epochs= num_epochs,
-            #                 fp16=fp16,
-            #                 bf16=bf16,
-            #                 learning_rate=lr,
-            #                 gradient_accumulation_steps=gradient_accumulation_steps,
-            #                 gradient_checkpointing=gradient_checkpointing,
-            #                 max_seq_length = max_seq_length,
-            #                 report_to=report_to
-            #                         )
             sft_config = SFTConfig(
                             output_dir="/home/ubuntu/src//tmp",
                             deepspeed="/home/ubuntu/src/zero_config.json",
@@ -1861,4 +1942,3 @@ Notes:
     
     if ddp:
       dist.destroy_process_group()
-    
