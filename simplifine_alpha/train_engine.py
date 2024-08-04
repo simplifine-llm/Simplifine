@@ -677,10 +677,230 @@ def cleanup():
     if dist.is_initialized():
         dist.destroy_process_group()
 
+
+def sft_train_v2(
+    model_name:str, dataset_name:str='', hf_token:str='', new_padding_token:str=None, dataset_config_name:str=None, data_from_hf:bool=True,
+    keys:list=[], template:str='', response_template:str='', use_chat_tempalte:bool=False, system_message_key:str=None, system_message:str=None,
+    do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, peft_config:LoraConfig=None, 
+    sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
+    use_ddp:bool=False, use_zero:bool=True
+): 
+    """
+    Train a model using the Supervised Finetuning (SFT) process.
+
+    This function initializes a model, tokenizer, and trainer for the SFT process using Hugging Face Transformers.
+
+    Parameters:
+    -----------
+    model_name : str
+        The name or path of the pre-trained model to use.
+    dataset_name : str, optional
+        The name of the dataset to use for training.
+    keys : list, optional
+        List of keys used for formatting prompts in the template.
+    template : str, optional
+        Template string for formatting prompts with keys.
+    do_split : bool, optional
+        Whether to split the dataset into training and testing sets. Default is True.
+    split_ratio : float, optional
+        The ratio of the dataset to use for testing. Default is 0.2.
+    sft_config : SFTConfig, optional
+        Configuration object for the SFT process. Default is None.
+    data : dict, optional
+        Dictionary containing the dataset for training. Default is an empty dictionary.
+    num_epochs : int, optional
+        Number of training epochs. Default is 3.
+    batch_size : int, optional
+        Batch size for training. Default is 1.
+    wandb_config : wandbConfig, optional
+        Configuration object for Weights & Biases. Default is None.
+    use_ddp : bool, optional
+        Whether to use Distributed Data Parallel (DDP). Default is False.
+    use_zero : bool, optional
+        Whether to use Zero optimization. Default is True.
+
+    Raises:
+    -------
+    ValueError
+        If both DDP and Zero optimization are set to True simultaneously. Only one dist method is accepted at once.
+
+    Notes:
+    ------
+    - This function initializes a tokenizer, configures SFT parameters, loads the dataset, initializes the model, and starts training using the SFTTrainer.
+    - If DDP and Zero optimization are enabled, they cannot be used simultaneously due to conflicting configurations.
+    """
+    
+    # Ensure no default process group exists
+    if dist.is_initialized():
+        print("Destroying existing process group")
+        dist.destroy_process_group()
+    
+    if use_ddp and use_zero:
+        raise ValueError("Only one dist method is accepted at once.")
+    
+    if response_template not in template:
+        raise ValueError('The response template must be in the template')
+
+    if system_message_key and system_message:
+        raise ValueError('Only provide key from dataset or system message as a string, not both')
+    
+    if sft_config is None:
+        raise ValueError('SFT config must be provided')
+
+    # initialize the tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
+    if tokenizer.pad_token is None:
+        if new_padding_token:
+            tokenizer.pad_token = new_padding_token
+        else:
+            tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
+
+    # replacing the response template, with chat/instruction based tokens.
+    # tokenizing response tempaltes in context can be different to ones without it
+    if use_chat_tempalte:
+            if tokenizer.chat_template:
+                # dummy messages to extract chat tokens
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant."
+                    },
+                    {
+                        "role": "user",
+                        "content": "Who won the world series in 2020?"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "The Los Angeles Dodgers won the World Series in 2020."
+                    }
+            ]   
+                text = tokenizer.apply_chat_template(messages, tokenize=False)
+                chat_temp = text.split(messages[1]['content'])[-1].split(messages[-1]['content'])[0]
+                chat_response_temp = chat_temp.replace(tokenizer.eos_token,'')
+            else:
+                raise ValueError('Tokenizer does not have chat template')
+    
+    if data_from_hf:
+        try:
+            if dataset_config_name:
+                raw_datasets = load_dataset(dataset_name, dataset_config_name, token=False, split='train')
+            else:
+                raw_datasets = load_dataset(dataset_name, token=False, split='train')
+        except Exception as e:
+            print(f'Error: {e}')
+            if dataset_config_name:
+                raw_datasets = load_dataset(dataset_name, dataset_config_name, token=False)
+            else:
+                raw_datasets = load_dataset(dataset_name, token=False)
+            raw_datasets = raw_datasets['train']
+        if do_split:
+            raw_datasets = raw_datasets.train_test_split(split_ratio)
+    else:
+        raw_datasets = Dataset.from_dict(data)
+        if do_split:
+            raw_datasets = raw_datasets.train_test_split(split_ratio)
+    
+    # function to format the prompts
+    def formatting_prompts_func(example):
+        output_texts = []
+            
+        if not tokenizer.chat_template:
+                for i in range(len(example[keys[0]])):
+                    formatted_text = template.format(
+                        **{key: example[key][i] for key in keys}
+                    )
+                    output_texts.append(formatted_text)
+        else:
+            for i in range(len(example[keys[0]])):
+                formatted_text = template.format(
+                    **{key: example[key][i] for key in keys}
+                )
+                user_text, assistant_text = formatted_text.split(response_template)
+                assistant_text = response_template + assistant_text
+                if system_message_key or system_message:
+                    if system_message_key:
+                        system_message_text = example[system_message_key][i]
+                    else:
+                        system_message_text = system_message
+                    messages = [
+                        {"role": "user", "content": user_text},
+                        {"role": "assistant", "content": assistant_text},
+                        {"role": "system", "content": system_message_text}
+                    ]
+                else:
+                    messages = [
+                        {"role": "user", "content": user_text},
+                        {"role": "assistant", "content": assistant_text},
+                    ]
+                chat_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+                output_texts.append(chat_prompt)
+        
+        if not all(isinstance(text, str) for text in output_texts):
+            raise ValueError("Formatted text must be a list of strings")
+    
+        # Ensure that there's at least one text to process
+        if not output_texts:
+            return {'input_ids': [], 'attention_mask': []}
+    
+        tokenized_output = tokenizer(output_texts, truncation=True, padding='max_length', add_special_tokens=True, max_length=tokenizer.model_max_length)
+
+        return tokenized_output
+
+    if tokenizer.chat_template:
+        collator = DataCollatorForCompletionOnlyLM(chat_response_temp, tokenizer=tokenizer)
+    else:
+        collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+ 
+    promptTokenizedDataset = raw_datasets.map(formatting_prompts_func, batched=True, remove_columns=raw_datasets['train'].column_names)
+    promptTokenizedDataset = promptTokenizedDataset.shuffle(len(promptTokenizedDataset))
+
+    # initialize the peft config
+    if use_peft:
+        if peft_config is None:
+            target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",]
+
+            peft_config = LoraConfig(
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.05,
+                bias="none",
+                task_type="CAUSAL_LM",
+                target_modules=target_modules,
+            )
+    
+    # initialize the model
+    device, device_name = init_device()
+    if device_name == 'cuda':
+        model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                 token = hf_token,
+                                                 attn_implementation="flash_attention_2",
+                                                 torch_dtype=torch.float16)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                 token = hf_token,
+                                                 torch_dtype=torch.float32)
+    model.resize_token_embeddings(len(tokenizer))
+
+    # if peft is enabled, use the peft model
+    if use_peft:
+        model = get_peft_model(model, peft_config=peft_config)
+    
+
+
+    
+
+    
+
+
+
+
+
+
 def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
            keys:list=[], template:str='', do_split:bool=True, split_ratio:float=0.2, load_eval_from_data:bool=False, 
            data:dict={}, num_epochs:int=3, batch_size:int=1, wandb_api_key:str='',
-           lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:', eval_steps:int=10,
+           lr:float=5e-5, from_hf:bool=True, response_template:str='### Answer:', eval_steps:int=10, logging_steps:int=10,
            use_peft:bool=False, peft_config=None, ddp:bool=False, zero:bool=True, deepspeed_config:str='home/ubuntu/src/zero_config.json',
            hf_token:str='', gradient_accumulation_steps:int=1, fp16:bool=False, bf16:bool=False, report_to:str='none',
             gradient_checkpointing:bool=False, max_seq_length:int=2048, use_wandb:bool=False, output_dir:str='sft_output', eval_accumulation_steps:int=8, wandb_config:wandbConfig=None):
@@ -822,18 +1042,12 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
         
         if not all(isinstance(text, str) for text in output_texts):
             raise ValueError("Formatted text must be a list of strings")
-
-        filtered_output_texts = []
-        for text in output_texts:
-            tokenized_output = tokenizer(text, truncation=False, add_special_tokens=False)
-            if len(tokenized_output['input_ids']) <= tokenizer.model_max_length:
-                filtered_output_texts.append(text)
     
         # Ensure that there's at least one text to process
-        if not filtered_output_texts:
+        if not output_texts:
             return {'input_ids': [], 'attention_mask': []}
     
-        tokenized_output = tokenizer(filtered_output_texts, truncation=True, padding='max_length', add_special_tokens=True)
+        tokenized_output = tokenizer(output_texts, truncation=True, padding='max_length', add_special_tokens=True)
 
         return tokenized_output
 
@@ -906,7 +1120,9 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             report_to=report_to,
                             remove_unused_columns=False,
                             eval_steps=eval_steps,
-                            eval_accumulation_steps=eval_accumulation_steps
+                            eval_accumulation_steps=eval_accumulation_steps,
+                            evaluation_strategy="steps",
+                            logging_steps=logging_steps
                                     )
         elif zero:
             # sft_config = SFTConfig(
@@ -935,11 +1151,12 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             report_to='none',
                             gradient_checkpointing=True,
                             logging_dir="/home/ubuntu/src//chkp-pact",
-                            logging_steps=20,
                             max_seq_length = max_seq_length,
                             save_steps=50,
                             eval_steps=1,
-                            eval_accumulation_steps=eval_accumulation_steps)
+                            eval_accumulation_steps=eval_accumulation_steps,
+                            evaluation_strategy="steps",
+                            logging_steps=logging_steps)
         else:
             sft_config = SFTConfig(
                             output_dir=output_dir,
@@ -954,7 +1171,9 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             max_seq_length = max_seq_length,
                             report_to=report_to,
                             eval_steps=eval_steps,
-                            eval_accumulation_steps=eval_accumulation_steps
+                            eval_accumulation_steps=eval_accumulation_steps,
+                            logging_steps=logging_steps,
+                            evaluation_strategy="steps"
                                     )
     else:
         model.to(device)
@@ -975,10 +1194,12 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
                             report_to=report_to,
                             remove_unused_columns=True,
                             eval_steps=eval_steps,
-                            eval_accumulation_steps=eval_accumulation_steps
+                            eval_accumulation_steps=eval_accumulation_steps,
+                            logging_steps=logging_steps,
+                            evaluation_strategy="steps"
                                     )
     
-    
+    print(f"train data set is: {promptTokenizedDataset['train']}, eval dataset is {promptTokenizedDataset['test']}")
     if do_split:
         trainer = SFTTrainer(
         model,
