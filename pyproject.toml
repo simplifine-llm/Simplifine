@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "simplifine-alpha"
-version = "0.0.76"
+version = "0.0.77"
 authors = [
   { name="Ali Kavoosi, Raveen Kariyawasam", email="founders@simplfine.com"}
 ]

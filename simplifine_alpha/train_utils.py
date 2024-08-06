@@ -161,6 +161,8 @@ class Client:
             sft_config.gradient_checkpointing = False
         
         # converting the 3 dataclasses, lora_config, sft_config, sft_prompt_config to dictionaries
+        if lora_config is None:
+            lora_config = LoraConfig()
         lora_config_dict = asdict(lora_config)
         sft_config_dict = asdict(sft_config)
         sft_prompt_config_dict = asdict(sft_prompt_config)
