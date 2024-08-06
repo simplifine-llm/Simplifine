@@ -49,120 +49,8 @@ class Client:
             self.url = url_config.url
         self.wandb_config = None
 
-
-    def cls_train_cloud(self, job_name:str='', dataset_name:str='', model_name:str='', 
-                        inputs:list=[], labels:list=[], from_hf:bool=True, use_peft:bool=False,
-                        peft_config=None, hf_token:str='', lr:float=5e-5, num_epochs:int=3,
-                        batch_size:int=8, use_fp16:bool=False, use_bf16:bool=False,
-                        use_ddp:bool=False, use_zero:bool=True, use_gradient_checkpointing:bool=False,
-                        report_to:str='none', wandb_api_key:str='', do_split:bool=True, split_ratio:float=0.2,
-                        gradient_accumulation_steps:int=4, hf_column_input:str='', hf_column_label:str='', lr_scheduler_type:str='linear'):
-        pass
-
-    def clm_train_cloud(self, job_name:str='',
-                        model_name:str='', dataset_name:str="",
-                        context_length:int=128, data:list=[],
-                        num_epochs:int=3, batch_size:int=8, use_fp16:bool=False, use_bf16:bool=False,
-                        lr:float=5e-5, from_hf:bool=True, do_split:bool=True, split_ratio:float=0.2,
-                        gradient_accumulation_steps:int=4, use_gradient_checkpointing:bool=False,
-                        report_to:str='none', wandb_api_key:str='', eval_accumulation_steps:int=4,
-                        use_peft:bool=False, peft_config=None, hf_token:str='',
-                        hf_column:str='text', lr_scheduler_type:str='linear',
-                        use_ddp:bool=False, use_zero:bool=True):
-        """
-        Function to train a causal language model on the cloud.
-        args:
-            api_key (str): The API key for the cloud service.
-            job_name (str): The name of the job.
-            model_name (str): The name of the model to train.
-            dataset_name (str): The name of the dataset to use.
-            learning_rate (float): The learning rate for the training.
-            num_train_epochs (int): The number of training epochs.
-            batch_size (int): The batch size for training.
-            use_ddp (bool): Whether to use distributed data parallelism.
-            use_fp16 (bool): Whether to use 16-bit floating point precision.
-            use_deepspeed (bool): Whether to use deepspeed.
-            use_peft (bool): Whether to use PEFT.
-            use_gradient_checkpointing (bool): Whether to use gradient checkpointing.
-            hf_token (str): The huggingface token.
-            report_to (str): The reporting destination.
-            deepspeed_config (dict): The deepspeed configuration.
-            gradient_accumulation_steps (int): The number of gradient accumulation steps.
-        """
-
-        # client side checks
-        if use_zero and use_ddp:
-            raise Exception('Zero and DDP cannot be used together. Please choose one.')
-        if use_zero and use_peft:
-            raise Exception('Zero and PEFT cannot be used together. Please choose one. We are working hard on this')
-        if use_ddp and use_gradient_checkpointing:
-            raise Exception('DDP and gradient checkpointing cannot be used together. Please choose one.')
-
-        # check for peft and peft config
-        if use_peft:
-            if peft_config is None:
-                warnings.warn('PEFT is enabled but no PEFT config provided. Using default mode.')
-                _peft_config = None
-            else:
-                _peft_config = asdict(peft_config)
-                # Convert target_modules to a list if it is a set
-                if 'target_modules' in _peft_config and isinstance(_peft_config['target_modules'], set):
-                    _peft_config['target_modules'] = list(_peft_config['target_modules'])
-                
-                # Get the valid fields of LoraConfig
-                valid_fields = {f.name for f in fields(LoraConfig)}
-
-                # Filter the dictionary to include only valid fields
-                _peft_config = {k: v for k, v in _peft_config.items() if k in valid_fields}
-
-                # Debug print statement
-                print(f"PEFT config: {_peft_config}")
-        
-        # check for wandb config
-        if report_to == 'wandb' or self.wandb_config is not None:
-            _wandb_config = self.wandb_config
-            _wandb_config = asdict(_wandb_config)
-        else:
-            _wandb_config = None
-
-
-        
-        config = {
-            'api_key': self.api_key,
-            'job_name': job_name,
-            'type':'clm',
-            'model_name':model_name,
-            'dataset_name': dataset_name,
-            'args': {
-                'data':data,
-                'lr': lr,
-                'context_length': context_length,
-                'use_peft': use_peft,
-                'peft_config': _peft_config,
-                'num_train_epochs': num_epochs,
-                'batch_size': batch_size,
-                'use_ddp': use_ddp,
-                'use_zero': use_zero,
-                'use_fp16': use_fp16,
-                'use_bf16':use_bf16,
-                'use_gradient_checkpointing': use_gradient_checkpointing,
-                'huggingface_token': hf_token,
-                'report_to': report_to,
-                'wandb_api_key': wandb_api_key,
-                'do_split': do_split,
-                'split_ratio': split_ratio,
-                'gradient_accumulation_steps': gradient_accumulation_steps,
-                'per_device_batch_size': batch_size,
-                'from_hf': from_hf,
-                'hf_column': hf_column,
-                'lr_scheduler_type': lr_scheduler_type,
-                'eval_accumulation_steps': eval_accumulation_steps,
-                'wandb_config': _wandb_config
-            }
-        }
-        send_train_query(config, url=self.url)
     
-    def clm_train_cloud_v2(self, job_name:str,
+    def clm_train_cloud(self, job_name:str,
         model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
     do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
     train_args:TrainingArguments=None, data:dict={}, wandb_config:wandbConfig=None, 
@@ -184,6 +72,10 @@ class Client:
         if use_ddp and train_args.gradient_checkpointing:
             print('[WARNING]: Gradient checkpointing is not supported with DDP. Disabling gradient checkpointing.')
             train_args.gradient_checkpointing = False
+        
+        if train_args.deepspeed is None and use_zero:
+            print('[WARNING]: Zero is enabled but deepspeed is not.This will use default settings on Simplfiine servers.')
+        
         
         # converting the 3 dataclasses, lora_config, sft_config, sft_prompt_config to dictionaries
         if lora_config is None:
@@ -233,123 +125,7 @@ class Client:
         send_train_query(config, url=self.url)
 
 
-    def sft_train_cloud(self, job_name:str='',
-                        model_name:str='', dataset_name:str='', data:dict={},
-                        keys:str='', template:str='', response_template:str='',
-                        learning_rate:float=1e-5, num_train_epochs:int=1,  per_device_batch_size:int=1,
-                        batch_size:int=1, use_ddp:bool=False, eval_accumulation_steps:int=4,
-                        use_fp16:bool=False, use_deepspeed:bool=False, use_peft:bool=False,
-                        use_gradient_checkpointing:bool=False, use_activation_checkpointing:bool=False,
-                        huggingface_token:str='', do_split:bool=True, split_ratio:float=0.2,
-                        prompt_template:str='', report_to:str='none', max_seq_length:int=2048,
-                        deepspeed_config:dict={}, gradient_accumulation_steps:int=1, 
-                        from_hf:bool=True, peft_config=None, use_zero:bool=False,
-                        ):
-        """
-        Function to send the training query to the server. This is for supervised fine-tuning. 
-        args:
-            api_key: your simplifine API key/token
-            job_name: the name of the job
-            model_name: the name of the model to train. At this point, the only models accepted are from huggingface.
-            dataset_name: the name of the dataset to use
-            keys: the keys to use for the template
-            template: the template to use for the training
-            learning_rate: the learning rate for the training
-            num_train_epochs: the number of training epochs
-            batch_size: the batch size for training
-            use_ddp: whether to use distributed data parallelism
-            use_fp16: whether to use 16-bit floating point precision
-            use_deepspeed: whether to use deepspeed
-            use_peft: whether to use PEFT
-            use_gradient_checkpointing: whether to use gradient checkpointing
-
-        """
-
-        # client side checks
-        if use_zero and use_ddp:
-            raise Exception('Zero and DDP cannot be used together. Please choose one.')
-        if use_zero and use_peft:
-            raise Exception('Zero and PEFT cannot be used together. Please choose one. We are working hard on this')
-        if use_ddp and use_gradient_checkpointing:
-            raise Exception('DDP and gradient checkpointing cannot be used together. Please choose one.')
-        # SFT specfic checks
-        if response_template == '':
-            raise Exception('Please provide a response template for the model to train.')
-        if template == '':
-            raise Exception('Please provide a prompt template for the model to train.')
-        if response_template not in template:
-            raise Exception('Response template not found in the main template.')
-    
-        # check for peft and peft config
-        if use_peft:
-            if peft_config is None:
-                warnings.warn('PEFT is enabled but no PEFT config provided. Using default mode.')
-                _peft_config = None
-            else:
-                _peft_config = asdict(peft_config)
-                # Convert target_modules to a list if it is a set
-                if 'target_modules' in _peft_config and isinstance(_peft_config['target_modules'], set):
-                    _peft_config['target_modules'] = list(_peft_config['target_modules'])
-                
-                # Get the valid fields of LoraConfig
-                valid_fields = {f.name for f in fields(LoraConfig)}
-
-                # Filter the dictionary to include only valid fields
-                _peft_config = {k: v for k, v in _peft_config.items() if k in valid_fields}
-
-                # Debug print statement
-                print(f"PEFT config: {_peft_config}")
-        else:
-            _peft_config = None
-        
-        # check for wandb config
-        if report_to == 'wandb' or self.wandb_config is not None:
-            _wandb_config = self.wandb_config
-            _wandb_config = asdict(_wandb_config)
-        else:
-            _wandb_config = None
-            
-        config = {
-            'api_key': self.api_key,
-            'job_name': job_name,
-            'type':'sft',
-            'model_name':model_name,
-            'dataset_name': dataset_name,
-            'args': {
-                'use_peft': use_peft,
-                'peft_config': _peft_config,
-                'lr': learning_rate,
-                'keys': keys,
-                'template': template,
-                'num_train_epochs': num_train_epochs,
-                'batch_size': batch_size,
-                'use_ddp': use_ddp,
-                'use_zero': use_zero,
-                'use_fp16': use_fp16,
-                'use_deepspeed': use_deepspeed,
-                'do_split': do_split,
-                'split_ratio': split_ratio,
-                'use_gradient_checkpointing': use_gradient_checkpointing,
-                'use_activation_checkpointing': use_activation_checkpointing,
-                'huggingface_token': huggingface_token,
-                'response_template': response_template,
-                'prompt_template': prompt_template,
-                'max_seq_length': max_seq_length,
-                'report_to': report_to,
-                'deepspeed_config': deepspeed_config,
-                'gradient_accumulation_steps': gradient_accumulation_steps,
-                'per_device_batch_size': per_device_batch_size,
-                'from_hf': from_hf,
-                'data': data,
-                'eval_accumulation_steps':eval_accumulation_steps,
-                'wandb_config': _wandb_config
-            }
-        }
-        send_train_query(config, url=self.url)
-
-
-
-    def sft_train_cloud_v2(self, job_name:str,
+    def sft_train_cloud(self, job_name:str,
         model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
         do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
         sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
@@ -376,7 +152,9 @@ class Client:
         
         if sft_config.report_to == 'wandb' and wandb_config is None:
             raise ValueError('Wandb config must be provided if report_to is wandb')
-        
+
+        if sft_config.deepspeed is None and use_zero:
+            print('[WARNING]: Zero is enabled but deepspeed is not.This will use default settings on Simplfiine servers.')
         
         if use_ddp and sft_config.gradient_checkpointing:
             print('[WARNING]: Gradient checkpointing is not supported with DDP. Disabling gradient checkpointing.')

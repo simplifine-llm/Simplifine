@@ -525,152 +525,6 @@ def hf_finetune_embedder_positive(model_name:str, dataset_name:str='',
     post_train_metrics = evaluator(model)
     print(post_train_metrics)
 
-
-
-def create_config_file_no_offload(
-    fp16_enabled=True, fp16_loss_scale=0, fp16_loss_scale_window=1000, fp16_initial_scale_power=16, fp16_hysteresis=2, fp16_min_loss_scale=1,
-    optimizer_type="AdamW", optimizer_lr="auto", optimizer_weight_decay="auto", optimizer_torch_adam=True, optimizer_adam_w_mode=True,
-    scheduler_type="WarmupDecayLR", scheduler_warmup_min_lr="auto", scheduler_warmup_max_lr="auto", scheduler_warmup_num_steps="auto", scheduler_total_num_steps="auto",
-    zero_optimization_stage=2, zero_optimization_allgather_partitions=True, zero_optimization_allgather_bucket_size=2e8, zero_optimization_overlap_comm=True,
-    zero_optimization_reduce_scatter=True, zero_optimization_reduce_bucket_size="auto", zero_optimization_contiguous_gradients=True,
-    gradient_accumulation_steps="auto", gradient_clipping="auto", steps_per_print=2000, train_batch_size="auto", train_micro_batch_size_per_gpu="auto", wall_clock_breakdown=False,
-    filename="zero_config_no.json"
-):
-    """
-    Create a configuration file for zero optimization.
-
-    This function generates a JSON configuration file for zero optimization based on the provided parameters.
-
-    Parameters:
-    -----------
-    fp16_enabled : bool, optional
-        Whether to enable FP16 precision. Default is True.
-    fp16_loss_scale : int, optional
-        Initial loss scale for FP16. Default is 0.
-    fp16_loss_scale_window : int, optional
-        Window size for adjusting FP16 loss scale. Default is 1000.
-    fp16_initial_scale_power : int, optional
-        Initial power for FP16 loss scale adjustment. Default is 16.
-    fp16_hysteresis : int, optional
-        Hysteresis value for FP16 loss scale adjustment. Default is 2.
-    fp16_min_loss_scale : int, optional
-        Minimum loss scale value for FP16. Default is 1.
-    optimizer_type : str, optional
-        Type of optimizer to use. Default is "AdamW".
-    optimizer_lr : str or float, optional
-        Learning rate for the optimizer. Default is "auto".
-    optimizer_weight_decay : str or float, optional
-        Weight decay parameter for the optimizer. Default is "auto".
-    optimizer_torch_adam : bool, optional
-        Whether to use Torch's Adam optimizer. Default is True.
-    optimizer_adam_w_mode : bool, optional
-        Whether to use AdamW mode for Adam optimizer. Default is True.
-    scheduler_type : str, optional
-        Type of learning rate scheduler. Default is "WarmupDecayLR".
-    scheduler_warmup_min_lr : str or float, optional
-        Minimum learning rate during warmup phase. Default is "auto".
-    scheduler_warmup_max_lr : str or float, optional
-        Maximum learning rate during warmup phase. Default is "auto".
-    scheduler_warmup_num_steps : str or int, optional
-        Number of steps for LR warmup. Default is "auto".
-    scheduler_total_num_steps : str or int, optional
-        Total number of training steps for LR scheduler. Default is "auto".
-    zero_optimization_stage : int, optional
-        Stage of zero optimization to use. Default is 2.
-    zero_optimization_allgather_partitions : bool, optional
-        Whether to use allgather partitions in zero optimization. Default is True.
-    zero_optimization_allgather_bucket_size : float, optional
-        Bucket size for allgather in zero optimization. Default is 2e8.
-    zero_optimization_overlap_comm : bool, optional
-        Whether to overlap communication in zero optimization. Default is True.
-    zero_optimization_reduce_scatter : bool, optional
-        Whether to use reduce scatter in zero optimization. Default is True.
-    zero_optimization_reduce_bucket_size : str or float, optional
-        Bucket size for reduce scatter in zero optimization. Default is "auto".
-    zero_optimization_contiguous_gradients : bool, optional
-        Whether to use contiguous gradients in zero optimization. Default is True.
-    gradient_accumulation_steps : str or int, optional
-        Number of gradient accumulation steps. Default is "auto".
-    gradient_clipping : str or float, optional
-        Gradient clipping threshold. Default is "auto".
-    steps_per_print : int, optional
-        Frequency of printing steps during training. Default is 2000.
-    train_batch_size : str or int, optional
-        Batch size for training. Default is "auto".
-    train_micro_batch_size_per_gpu : str or int, optional
-        Micro batch size per GPU. Default is "auto".
-    wall_clock_breakdown : bool, optional
-        Whether to enable wall clock breakdown. Default is False.
-    filename : str, optional
-        Filename to save the configuration JSON file. Default is "zero_config_no.json".
-
-    Returns:
-    --------
-    filepath : str
-        The path to the created configuration file.
-
-    Examples:
-    ---------
-    Example usage of the function:
-
-    >>> create_config_file_no_offload(fp16_enabled=True, optimizer_lr=0.001, scheduler_type="WarmupDecayLR")
-    'path/to/zero_config_no.json'
-
-    Notes:
-    ------
-    - The function creates a JSON file with the specified configuration parameters.
-    - If a parameter is set to "auto", it indicates that the function will determine an appropriate value automatically.
-    """
-    script_path = os.path.dirname(os.path.realpath(__file__))
-    filepath = os.path.join(script_path, filename)
-    config = {
-        "fp16": {
-            "enabled": fp16_enabled,
-            "loss_scale": fp16_loss_scale,
-            "loss_scale_window": fp16_loss_scale_window,
-            "initial_scale_power": fp16_initial_scale_power,
-            "hysteresis": fp16_hysteresis,
-            "min_loss_scale": fp16_min_loss_scale
-        },
-        "optimizer": {
-            "type": optimizer_type,
-            "params": {
-                "lr": optimizer_lr,
-                "weight_decay": optimizer_weight_decay,
-                "torch_adam": optimizer_torch_adam,
-                "adam_w_mode": optimizer_adam_w_mode
-            }
-        },
-        "scheduler": {
-            "type": scheduler_type,
-            "params": {
-                "warmup_min_lr": scheduler_warmup_min_lr,
-                "warmup_max_lr": scheduler_warmup_max_lr,
-                "warmup_num_steps": scheduler_warmup_num_steps,
-                "total_num_steps": scheduler_total_num_steps
-            }
-        },
-        "zero_optimization": {
-            "stage": zero_optimization_stage,
-            "allgather_partitions": zero_optimization_allgather_partitions,
-            "allgather_bucket_size": zero_optimization_allgather_bucket_size,
-            "overlap_comm": zero_optimization_overlap_comm,
-            "reduce_scatter": zero_optimization_reduce_scatter,
-            "reduce_bucket_size": zero_optimization_reduce_bucket_size,
-            "contiguous_gradients": zero_optimization_contiguous_gradients
-        },
-        "gradient_accumulation_steps": gradient_accumulation_steps,
-        "gradient_clipping": gradient_clipping,
-        "steps_per_print": steps_per_print,
-        "train_batch_size": train_batch_size,
-        "train_micro_batch_size_per_gpu": train_micro_batch_size_per_gpu,
-        "wall_clock_breakdown": wall_clock_breakdown
-    }
-    
-    with open(filepath, 'w') as f:
-        json.dump(config, f, indent=4)
-    
-    return filepath
     
 def cleanup():
     """
@@ -689,6 +543,7 @@ class PromptConfig:
     clm_column: Optional[str] = None
     context_length: Optional[int] = 1024
 
+
 @dataclass
 class sftPromptConfig(PromptConfig):
     keys: List[str] = field(default_factory=list)
@@ -696,7 +551,7 @@ class sftPromptConfig(PromptConfig):
     response_template: str = ""
 
 
-def sft_train_v2(
+def sft_train(
     model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
     do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
     sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
@@ -1314,7 +1169,7 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     if ddp:
         dist.destroy_process_group()
 
-def clm_train_v2(
+def clm_train(
     model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
     do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
     train_args:TrainingArguments=None, data:dict={}, wandb_config:wandbConfig=None, 
