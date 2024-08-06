@@ -15,8 +15,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
-from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
-from .train_engine import sftPromptConfig, PromptConfig
+from train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
+from train_engine import sftPromptConfig, PromptConfig
 from url_class import url_config
 import zipfile
 import os
@@ -162,7 +162,7 @@ class Client:
         }
         send_train_query(config, url=self.url)
     
-    def clm_train_cloud_v2(self, api_key:str, job_name:str,
+    def clm_train_cloud_v2(self, job_name:str,
         model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
     do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
     train_args:TrainingArguments=None, data:dict={}, wandb_config:wandbConfig=None, 
@@ -173,7 +173,7 @@ class Client:
             raise ValueError("Only one dist method is accepted at once.")
         
         if use_ddp:
-            sft_config.deepspeed = None
+            train_args.deepspeed = None
         
         if train_args is None:
             raise ValueError('Training arguements must be provided')
@@ -181,11 +181,13 @@ class Client:
         if data_from_hf and not dataset_name:
             raise ValueError('Dataset name must be provided if data is from Hugging Face')
         
-        if use_ddp and sft_config.gradient_checkpointing:
+        if use_ddp and train_args.gradient_checkpointing:
             print('[WARNING]: Gradient checkpointing is not supported with DDP. Disabling gradient checkpointing.')
-            sft_config.gradient_checkpointing = False
+            train_args.gradient_checkpointing = False
         
         # converting the 3 dataclasses, lora_config, sft_config, sft_prompt_config to dictionaries
+        if lora_config is None:
+            lora_config = LoraConfig()
         lora_config_dict = asdict(lora_config)
         train_args_dict = asdict(train_args)
         prompt_config = asdict(prompt_config)
@@ -347,7 +349,7 @@ class Client:
 
 
 
-    def sft_train_cloud_v2(self, api_key:str, job_name:str,
+    def sft_train_cloud_v2(self, job_name:str,
         model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
         do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
         sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
@@ -476,4 +478,3 @@ class Client:
         if job_id == '':
             raise Exception('Please provide a job ID to stop the job.')
         return stop_job(self.api_key, job_id, url=self.url)
-
