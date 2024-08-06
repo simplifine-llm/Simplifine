@@ -15,9 +15,9 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
-from train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
-from train_engine import sftPromptConfig, PromptConfig
-from url_class import url_config
+from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
+from .train_engine import sftPromptConfig, PromptConfig
+from .url_class import url_config
 import zipfile
 import os
 from dataclasses import asdict, fields
