@@ -46,8 +46,8 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import json
 import os
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import Optional, List
 
 
 @dataclass
@@ -681,14 +681,19 @@ def cleanup():
 
 
 @dataclass
-class sftPromptConfig:
-    keys:list
-    template:str
-    response_template:str
-    new_padding_token:Optional[str] = None
+class PromptConfig:
+    new_padding_token: Optional[str] = None
     use_chat_template: Optional[bool] = False
     system_message_key: Optional[str] = None
     system_message: Optional[str] = None
+    clm_column: Optional[str] = None
+    context_length: Optional[int] = 1024
+
+@dataclass
+class sftPromptConfig(PromptConfig):
+    keys: List[str] = field(default_factory=list)
+    template: str = ""
+    response_template: str = ""
 
 
 def sft_train_v2(
@@ -749,10 +754,6 @@ def sft_train_v2(
     use_chat_template = sft_prompt_config.use_chat_template
     system_message_key = sft_prompt_config.system_message_key
     system_message = sft_prompt_config.system_message
-
-    print('\n-------------- sft deepspeed config --------------\n', sft_config.deepspeed)
-    print('\n-------------- use ddp --------------\n', use_ddp)
-    print('\n-------------- use zero --------------\n', use_zero)
     # Ensure no default process group exists
     if dist.is_initialized():
         print("Destroying existing process group")
@@ -1313,7 +1314,196 @@ def hf_sft(model_name:str, dataset_name:str='nlpie/pandemic_pact',
     if ddp:
         dist.destroy_process_group()
 
+def clm_train_v2(
+    model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
+    do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
+    train_args:TrainingArguments=None, data:dict={}, wandb_config:wandbConfig=None, 
+    use_ddp:bool=False, use_zero:bool=True, prompt_config:PromptConfig=None
+    ):
+    # Ensure no default process group exists
+    if dist.is_initialized():
+        print("Destroying existing process group")
+        dist.destroy_process_group()
     
+    if use_ddp and use_zero:
+        raise ValueError("Only one dist method is accepted at once.")
+    
+    if use_ddp:
+        train_args.deepspeed = None
+
+    if train_args is None:
+        raise ValueError('SFT config must be provided')
+    
+    if data_from_hf and not dataset_name:
+        raise ValueError('Dataset name must be provided if data is from Hugging Face')
+    
+    # initialize the training arguments
+    if train_args is None:
+        raise ValueError('SFT config must be provided')
+    
+    if use_ddp and train_args.gradient_checkpointing:
+        print('[WARNING]: Gradient checkpointing is not supported with DDP. Disabling gradient checkpointing.')
+        train_args.gradient_checkpointing = False
+
+    # initialize the tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
+    if tokenizer.pad_token is None:
+        if prompt_config.new_padding_token:
+            tokenizer.pad_token = prompt_config.new_padding_token
+        else:
+            tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
+
+
+    train_args.remove_unused_columns=False
+    if data_from_hf:
+        try:
+            if dataset_config_name:
+                raw_datasets = load_dataset(dataset_name, dataset_config_name, token=False, split='train')
+                raw_datasets = raw_datasets.rename_column(prompt_config.clm_column, 'text')
+            else:
+                raw_datasets = load_dataset(dataset_name, token=False, split='train')
+                raw_datasets = raw_datasets.rename_column(prompt_config.clm_column, 'text')
+        except Exception as e:
+            print(f'Error: {e}')
+            if dataset_config_name:
+                raw_datasets = load_dataset(dataset_name, dataset_config_name, token=False)
+            else:
+                raw_datasets = load_dataset(dataset_name, token=False)
+            raw_datasets = raw_datasets['train']
+            raw_datasets = raw_datasets.rename_column(prompt_config.clm_column, 'text')
+        if do_split:
+            raw_datasets = raw_datasets.train_test_split(split_ratio)
+    else:
+        raw_datasets = Dataset.from_dict(data)
+        if do_split:
+            raw_datasets = raw_datasets.train_test_split(split_ratio)
+    
+    # tokenizing the dataset
+    def tokenize(element):
+        outputs = tokenizer(
+            element['text'],
+            truncation=True,
+            max_length=prompt_config.context_length,
+            return_overflowing_tokens=True,
+            return_length=True,
+        )
+        input_batch = []
+        for length, input_ids in zip(outputs["length"], outputs["input_ids"]):
+            if length == prompt_config.context_length:
+                input_batch.append(input_ids)
+
+        return {"input_ids": input_batch}
+
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+    tokenized_datasets = raw_datasets.map(
+    tokenize, batched=True, remove_columns=raw_datasets['train'].column_names
+    )
+    
+    if train_args.report_to == ['wandb']:
+        wandb_api_key = wandb_config.api_key
+        project = wandb_config.project
+        config = wandb_config.config
+        wandb.login(key=wandb_api_key)
+        wandb.init(project=project, config=config)
+
+
+    # initialize the peft config
+    if use_peft:
+        if lora_config is None:
+            target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",]
+
+            lora_config = LoraConfig(
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.05,
+                bias="none",
+                task_type="CAUSAL_LM",
+                target_modules=target_modules,
+            )
+    
+    # initialize the model
+    device, device_name = init_device()
+    if device_name == 'cuda':
+        model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                 token = hf_token)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                 token = hf_token)
+    model.resize_token_embeddings(len(tokenizer))
+
+    # if peft is enabled, use the peft model
+    if use_peft:
+        model = get_peft_model(model, peft_config=lora_config)
+    
+    _is_distritubed = False
+    if torch.cuda.device_count() > 1:
+        if use_ddp and use_zero:
+            raise ValueError('Zero optimization and DDP cannot be used together')
+        if use_ddp:
+            _is_distritubed = True
+            if not dist.is_initialized():
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
+
+            train_args.ddp_find_unused_parameters=False
+            rank = dist.get_rank()
+            device_id = rank % torch.cuda.device_count()
+            model = model.to(device_id)
+            model = DDP(model, device_ids=[device_id])
+        elif use_zero:
+            _is_distritubed = True
+            if not dist.is_initialized():
+                print("Initializing process group for DDP")
+                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+            else:
+                print("Process group already initialized")
+            print('using ZeRO optimization')
+        else:
+            # user warning not utilizing DDP or ZeRO for multi-gpu setup
+            print('[WARNING]: multiple GPUs detected, but not using DDP or ZeRO')
+    else:
+        model.to(device)
+        distributed = False
+        if device_name == 'mps':
+            train_args.fp16 = False
+            train_args.bf16 = False
+    
+    # init training
+    if do_split:
+        trainer = Trainer(
+        model=model,
+        tokenizer=tokenizer,
+        args=train_args,
+        data_collator=data_collator,
+        train_dataset=tokenized_datasets["train"],
+        eval_dataset=tokenized_datasets["test"],
+        )
+    else:
+        trainer = Trainer(
+        model=model,
+        tokenizer=tokenizer,
+        args=train_args,
+        data_collator=data_collator,
+        train_dataset=tokenized_datasets,
+        )
+
+    # creating a directory in ouput dir for final model saving
+    output_dir_final = os.path.join(train_args.output_dir, 'final_model')
+    if not os.path.exists(output_dir_final):
+        os.makedirs(output_dir_final, exist_ok=True)
+    
+    trainer.train()
+    trainer.save_model(output_dir_final)
+    
+    if use_ddp:
+      dist.destroy_process_group()
+
+
+
 
 def hf_clm_train(model_name:str='', dataset_name:str="",
                     context_length:int=128, data:list=[],

@@ -15,14 +15,16 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
-from .train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
+from train_engine_client import send_train_query, get_company_status, get_job_log, download_directory, stop_job
+from train_engine import sftPromptConfig
+from url_class import url_config
 import zipfile
 import os
-from .url_class import url_config
 from dataclasses import asdict, fields
 import warnings
 from peft import LoraConfig
 from dataclasses import dataclass
+from trl import SFTConfig
 
 @dataclass
 class wandbConfig:
@@ -273,6 +275,87 @@ class Client:
         }
         send_train_query(config, url=self.url)
 
+
+
+    def sft_train_cloud_v2(self, api_key:str, job_name:str,
+        model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
+        do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
+        sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
+        use_ddp:bool=False, use_zero:bool=True, sft_prompt_config:sftPromptConfig=None):
+
+        # client side checks
+        if use_ddp and use_zero:
+            raise ValueError("Only one dist method is accepted at once.")
+        
+        if use_ddp:
+            sft_config.deepspeed = None
+        
+        if sft_prompt_config.response_template not in sft_prompt_config.template:
+            raise ValueError('The response template must be in the template')
+
+        if sft_prompt_config.system_message_key and sft_prompt_config.system_message:
+            raise ValueError('Only provide key from dataset or system message as a string, not both')
+        
+        if sft_config is None:
+            raise ValueError('SFT config must be provided')
+        
+        if data_from_hf and not dataset_name:
+            raise ValueError('Dataset name must be provided if data is from Hugging Face')
+        
+        if sft_config.report_to == 'wandb' and wandb_config is None:
+            raise ValueError('Wandb config must be provided if report_to is wandb')
+        
+        
+        if use_ddp and sft_config.gradient_checkpointing:
+            print('[WARNING]: Gradient checkpointing is not supported with DDP. Disabling gradient checkpointing.')
+            sft_config.gradient_checkpointing = False
+        
+        # converting the 3 dataclasses, lora_config, sft_config, sft_prompt_config to dictionaries
+        lora_config_dict = asdict(lora_config)
+        sft_config_dict = asdict(sft_config)
+        sft_prompt_config_dict = asdict(sft_prompt_config)
+
+        # making sure invalid fields are not passed to the server
+        valid_fields = {f.name for f in fields(LoraConfig)}
+        lora_config_dict = {k: v for k, v in lora_config_dict.items() if k in valid_fields}
+
+        valid_fields = {f.name for f in fields(SFTConfig)}
+        sft_config_dict = {k: v for k, v in sft_config_dict.items() if k in valid_fields}
+
+        valid_fields = {f.name for f in fields(sftPromptConfig)}
+        sft_prompt_config_dict = {k: v for k, v in sft_prompt_config_dict.items() if k in valid_fields}
+
+        if wandb_config is not None:
+            wandb_config_dict = asdict(wandb_config)
+        else:
+            wandb_config_dict = None
+
+        config = {
+                'api_key': self.api_key,
+                'job_name': job_name,
+                'type':'sft_v2',
+                'model_name':model_name,
+                'dataset_name': dataset_name,
+                'args': {
+                    'sft_config': sft_config_dict,
+                    'lora_config': lora_config_dict,
+                    'sft_prompt_config': sft_prompt_config_dict,
+                    'data': data,
+                    'data_from_hf': data_from_hf,
+                    'hf_token': hf_token,
+                    'dataset_config_name': dataset_config_name,
+                    'do_split': do_split,
+                    'split_ratio': split_ratio,
+                    'use_peft': use_peft,
+                    'wandb_config': wandb_config_dict,
+                    'use_ddp': use_ddp,
+                    'use_zero': use_zero
+        }
+        }
+
+        send_train_query(config, url=self.url)
+
+
     def get_all_jobs(self):
         """
         Function to get the status of a job.
@@ -323,3 +406,14 @@ class Client:
         if job_id == '':
             raise Exception('Please provide a job ID to stop the job.')
         return stop_job(self.api_key, job_id, url=self.url)
+
+if __name__ == '__main__':
+    client = Client(api_key='OmidNLPIE', gpu_type='a100')
+    sft_prompt_config = sftPromptConfig(keys=['q','a'], template='Q: {q}\nA: {a}', response_template='A: {a}')
+    sft_config = SFTConfig(output_dir='test', max_seq_length=2048, gradient_accumulation_steps=1, report_to='none')
+    data = {'q':['What is the capital of France?']*10, 'a':['Paris']*10}
+    client.sft_train_cloud_v2(api_key='OmidNLPIE', job_name='test', model_name='gpt2', dataset_name='test', 
+                              do_split=True, data_from_hf=False, dataset_config_name='test', data=data,
+                              split_ratio=0.2, use_peft=False, lora_config=LoraConfig(), sft_config=sft_config, 
+                              use_ddp=True, use_zero=False, sft_prompt_config=sft_prompt_config)
+    # print(client.get_all_jobs()[-1])
