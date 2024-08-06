@@ -58,7 +58,6 @@ def parse_sft_prompt(generate_config:GenerationConfig, data:dict, tokenizer:Auto
             formatted_prompts.append(chat_prompt_pre_gen)
             expected_responses.append(chat_prompt_post_gen)
         else:
-            print('\n-------\n',formatted_text)
             formatted_text_pre_gen, formatted_text_post_gen = formatted_text.split(generate_config.response_template)
             formatted_prompts.append(formatted_text_pre_gen)
             expected_responses.append(formatted_text_post_gen)
