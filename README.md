@@ -4,6 +4,8 @@
 
 Simplifine lets you invoke LLM finetuning with just one line of code using any Hugging Face dataset or model.
 
+> Get a free Simplifine Cloud Credits to finetune [here](https://www.simplifine.com/api-key-interest)
+
 ## Updates
 ## 🔄 Updates
 **v0.0.8 (2024-08-08)**
