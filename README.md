@@ -10,7 +10,7 @@ Simplifine lets you invoke LLM finetuning with just one line of code using any H
 - **Bug Fixes:** Code clean up and trainer fixes.
 - **New Feature:** Ability to define more complex configuration files for the trainer.
 - **Documentation:** -New examples on training cloud and training a fake news detector.
-- ** COMPREHENSIVE UPDATE of DOCUMENTATIONS on [docs.simplifine.com](docs.simplifine.com).
+- **COMPREHENSIVE UPDATE of DOCUMENTATIONS on [docs.simplifine.com](docs.simplifine.com).**
 
 **v0.0.71 (2024-07-25)**
 - **Bug Fixes:** Resolved issues that prevented the library from loading on certain configurations.
