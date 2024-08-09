@@ -1,10 +1,10 @@
 # 🌟 Simplifine 🌟
 
-**The easiest, fully open-source LLM finetuning library!**
-
 Simplifine lets you invoke LLM finetuning with just one line of code using any Hugging Face dataset or model.
+> The easiest, fully open-source LLM finetuning library!
 
-> Get a free Simplifine Cloud Credits to finetune [here](https://www.simplifine.com/api-key-interest)
+
+**Get free Simplifine Cloud Credits to finetune [here](https://www.simplifine.com/api-key-interest)**
 
 ## Updates
 ## 🔄 Updates
