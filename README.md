@@ -6,13 +6,14 @@ Simplifine lets you invoke LLM finetuning with just one line of code using any H
 
 **Get free Simplifine Cloud Credits to finetune [here](https://www.simplifine.com/api-key-interest)**
 
-## Updates
+## Roadmap
+- **COMPREHENSIVE UPDATE of DOCUMENTATIONS on INCOMING (By Aug 9th, 2024) to match new config files.
+
 ## 🔄 Updates
 **v0.0.8 (2024-08-08)**
 - **Bug Fixes:** Code clean up and trainer fixes.
 - **New Feature:** Ability to define more complex configuration files for the trainer.
-- **Documentation:** -New examples on training cloud and training a fake news detector.
-- **COMPREHENSIVE UPDATE of DOCUMENTATIONS on [docs.simplifine.com](https://docs.simplifine.com).**
+- **Examples:** -New examples on training cloud and training a fake news detector.
 
 **v0.0.71 (2024-07-25)**
 - **Bug Fixes:** Resolved issues that prevented the library from loading on certain configurations.
@@ -62,8 +63,7 @@ We are looking for contributors! Please send an email to [founders@simplifine.co
 Simplifine is licensed under the GNU General Public License Version 3. See the LICENSE file for more details.
 
 ## 📚 Documentation
-
-Find our full documentation at [docs.simplifine.com](http://docs.simplifine.com).
+MAJOR OVERHAUL OF DOCUMENTATION IN THE WORKS (Done by 11th Aug 2024). In the meantime, please use this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb) here to learn how to use the model.
 
 ## 💬 Support
 
