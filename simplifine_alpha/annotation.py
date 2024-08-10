@@ -19,7 +19,6 @@
 from openai import OpenAI
 import os
 import json
-# from text_chunker import TextChunker
 from tqdm import tqdm
 from utils import chunk_text_by_words
 from logger import *
@@ -33,12 +32,14 @@ from openai import AsyncOpenAI
 
 # TODO: add a function to check the status of a batch request
 class synthetic:
-    def __init__(self):
+    def __init__(self, openai_api_key:str=''):
+        if openai_api_key == '':
+            print('[Warining] No openAI API keys have been passed.')
         self.client = OpenAI(
-        api_key='',
+        api_key=openai_api_key,
         )
         self.async_client = AsyncOpenAI(
-        api_key='',
+        api_key=openai_api_key,
         )
         self.model_name = 'gpt-4o'
         self.script_path = os.path.dirname(os.path.abspath(__file__))

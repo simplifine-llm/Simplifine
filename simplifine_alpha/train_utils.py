@@ -51,10 +51,10 @@ class Client:
 
     
     def clm_train_cloud(self, job_name:str,
-        model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
+    model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
     do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
     train_args:TrainingArguments=None, data:dict={}, wandb_config:wandbConfig=None, 
-    use_ddp:bool=False, use_zero:bool=True, prompt_config:PromptConfig=None
+    use_ddp:bool=False, use_zero:bool=False, prompt_config:PromptConfig=None
     ):
         # client side checks
         if use_ddp and use_zero:
@@ -129,7 +129,7 @@ class Client:
         model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
         do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
         sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
-        use_ddp:bool=False, use_zero:bool=True, sft_prompt_config:sftPromptConfig=None):
+        use_ddp:bool=False, use_zero:bool=False, sft_prompt_config:sftPromptConfig=None):
 
         # client side checks
         if use_ddp and use_zero:

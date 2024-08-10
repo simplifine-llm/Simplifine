@@ -23,7 +23,6 @@ import ast
 
 script_path = os.path.dirname(os.path.abspath(__file__))
 
-
 def get_task_from_batch_id(batch_id:str):
     """
     getting the task from the batch id.
@@ -32,7 +31,7 @@ def get_task_from_batch_id(batch_id:str):
     returns:
     task: str, the task of the batch request
     """
-    filename = os.path.join(script_path, 'batch requests', "logger.jsonl")
+    filename = os.path.join(script_path, 'batch_requests', "logger.jsonl")
     all_meta = read_jsonl(filename)
     for i in range(len(all_meta)):
         if all_meta[i]['id'] == batch_id:
@@ -63,7 +62,31 @@ def write_jsonl(file_path, data, append=True):
             for entry in existing_data:
                 file.write(json.dumps(entry) + '\n')
 
+
+def log_batch_input(input_file_name:str='', inputs:list=[], request_ids:list=[]):
+    """
+    logging the input for a batch request. This will save the inputs which is a list in an efficient fashion.
+    args:
+    batch_id: str, the id of the batch request
+    input_file_id: str, the id of the input file
+    input_file_name: str, the name of the input file
+    description: str, the description of the batch request
+    """
+
+    # Validate input_file_name
+    if not input_file_name:
+        raise ValueError("Input file name must be provided.")
     
+    path = os.path.join(script_path, 'batch_requests', f'{input_file_name}_input.json')
+    
+    # Log the inputs to the specified file
+    try:
+        with open(path, 'w') as file:
+            json.dump(inputs, file, indent=4)
+    except IOError as e:
+        print(f"An error occurred while writing to the file: {e}")
+
+
 def log_batch_metadata(batch_id, input_file_id, input_file_name, description, task, task_specific_paramters=[]):
     """
     logging the metadata for a batch request.
@@ -83,7 +106,13 @@ def log_batch_metadata(batch_id, input_file_id, input_file_name, description, ta
     'task_specific_paramters': task_specific_paramters,
     }
 
-    filename = os.path.join(script_path, 'batch requests', "logger.jsonl")
+    filename = os.path.join(script_path, 'batch_requests', "logger.jsonl")
+
+    try:
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(filename))
+    except FileExistsError:
+        pass
 
     if os.path.exists(filename):
         with open(filename, 'a') as file:
@@ -98,8 +127,23 @@ def log_batch_metadata(batch_id, input_file_id, input_file_name, description, ta
         with open(filename, 'w+') as file:
             for entry in existing_data:
                 file.write(json.dumps(entry) + '\n')
-    
 
+
+def get_batch_type(batch_id):
+    """
+    getting the type of a batch request.
+    args:
+    batch_id: str, the id of the batch request
+    returns:
+    type: str, the type of the batch request
+    """
+    filename = os.path.join(script_path, 'batch_requests', "logger.jsonl")
+    all_meta = read_jsonl(filename)
+    for i in range(len(all_meta)):
+        if all_meta[i]['id'] == batch_id:
+            type = all_meta[i]['task']
+            return type
+    raise Exception("The batch request id is not valid or the file is not found.")
 
 
 def get_batch_status(client, batch_id):
@@ -113,6 +157,7 @@ def get_batch_status(client, batch_id):
     status = client.batches.retrieve(batch_id).status
     return status
 
+
 def get_batch_meta(client, batch_id):
     """
     getting the status of a batch request.
@@ -123,6 +168,7 @@ def get_batch_meta(client, batch_id):
     """
     batch_meta_data = client.batches.retrieve(batch_id)
     return batch_meta_data
+
 
 def retireve_batch_results(client, batch_id):
     """
@@ -148,7 +194,7 @@ def retireve_batch_input(batch_id:str, return_task_parameters:bool=True):
     returns:
     results: list, a list of results from the batch request
     """
-    filename = os.path.join(script_path, 'batch requests', "logger.jsonl")
+    filename = os.path.join(script_path, 'batch_requests', "logger.jsonl")
     all_meta = read_jsonl(filename)
     input_file_name = None
     for i in range(len(all_meta)):
@@ -157,7 +203,7 @@ def retireve_batch_input(batch_id:str, return_task_parameters:bool=True):
             task_params = all_meta[i]['task_specific_paramters']
     if input_file_name is None:
         raise Exception("The batch request id is not valid or the file is not found.")
-    input_file_path = os.path.join(script_path, 'batch requests', input_file_name)
+    input_file_path = os.path.join(script_path, 'batch_requests', input_file_name)
     meta_data = read_jsonl(input_file_path)
     if return_task_parameters:
         return meta_data, task_params
@@ -172,7 +218,7 @@ def update_batch_status_signle(client, batch_id):
     client: OpenAI, the OpenAI client
     batch_id: str, the id of the batch request
     """
-    path = os.path.join(script_path, 'batch requests', 'logger.jsonl')
+    path = os.path.join(script_path, 'batch_requests', 'logger.jsonl')
     all_meta_data = read_jsonl(path)
     for i in range(len(all_meta_data)):
         if all_meta_data[i]['id'] == batch_id:
@@ -183,15 +229,13 @@ def update_batch_status_signle(client, batch_id):
             file.write(json.dumps(entry)) + '\n'
 
 
-
-
 def update_batch_status(client):
     """
     function to update the status of all batch requests in the logger.jsonl file.
     args:
     client: OpenAI, the OpenAI client
     """
-    path = os.path.join(script_path, 'batch requests', 'logger.jsonl')
+    path = os.path.join(script_path, 'batch_requests', 'logger.jsonl')
     all_meta_data = read_jsonl(path)
     for i in range(len(all_meta_data)):
         if all_meta_data[i]['status'] != 'completed' or all_meta_data[i]['status'] != 'failed' or all_meta_data[i]['status'] != 'canceled' or all_meta_data[i]['status'] != 'expired':
@@ -200,6 +244,7 @@ def update_batch_status(client):
     with open(path, 'w') as file:
         for entry in all_meta_data:
             file.write(json.dumps(entry) + '\n')
+
 
 def match_response_to_request(batch_id, client):
     """
@@ -233,12 +278,3 @@ def match_response_to_request(batch_id, client):
                 matched_response['response'].append(cur_resp)
                 break
     return matched_response
-    
-
-if __name__ == '__main__':
-    client = OpenAI(
-        api_key='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',
-    )
-    batch_id = 'batch_hGsLl1EwGbyPO3PatxFX19Mj'
-    print(match_response_to_request(batch_id, client))
-
