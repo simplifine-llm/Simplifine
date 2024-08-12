@@ -28,7 +28,53 @@ from tabulate import tabulate
 import re
 
 class openAI_job_manager:
+    """
+    A class to manage job requests and responses with OpenAI's API.
+
+    Attributes:
+    -----------
+    client : OpenAI
+        A synchronous client to interact with OpenAI API.
+    client_async : AsyncOpenAI
+        An asynchronous client to interact with OpenAI API.
+    model : str
+        The default model to use for requests.
+    script_path : str
+        The directory path of the current script.
+
+    Methods:
+    --------
+    get_batch_jobs():
+        Retrieve all batch jobs metadata from the logger.
+
+    get_batch_status(batch_id):
+        Retrieve the status of a specific batch job.
+
+    get_batch_type(batch_id):
+        Retrieve the type of a specific batch job.
+
+    get_batch_response(batch_id):
+        Retrieve the response of a specific batch job.
+
+    plot_batch_table(drop_columns=[]):
+        Display a tabulated batch jobs table, optionally dropping specified columns.
+
+    generate(messages, model=None):
+        Generate a response from OpenAI's API using a given list of messages.
+
+    """
+
     def __init__(self, api_key:str='', default_model='gpt-4o-mini'):
+        """
+        Initialize the openAI_job_manager.
+
+        Parameters:
+        -----------
+        api_key : str
+            The API key to authenticate with OpenAI.
+        default_model : str
+            The default model to use for requests. Default is 'gpt-4o-mini'.
+        """
         self.client = OpenAI(api_key=api_key)
         self.client_async = AsyncOpenAI(api_key=api_key)
         self.model = default_model
@@ -36,25 +82,79 @@ class openAI_job_manager:
     
 
     def get_batch_jobs(self):
+        """
+        Retrieve all batch jobs metadata from the logger.
+
+        Returns:
+        --------
+        list
+            A list of metadata for all batch jobs.
+        """
         logger_path = os.path.join(self.script_path, 'batch_requests', 'logger.jsonl')
         all_meta = read_jsonl(logger_path)
         return all_meta
     
 
     def get_batch_status(self, batch_id):
+        """
+        Retrieve the status of a specific batch job.
+
+        Parameters:
+        -----------
+        batch_id : str
+            The ID of the batch job.
+
+        Returns:
+        --------
+        dict
+            The status of the batch job.
+        """
         return get_batch_status(self.client, batch_id)
     
 
     def get_batch_type(self, batch_id):
+        """
+        Retrieve the type of a specific batch job.
+
+        Parameters:
+        -----------
+        batch_id : str
+            The ID of the batch job.
+
+        Returns:
+        --------
+        str
+            The type of the batch job.
+        """
         return get_batch_type(batch_id)
     
 
     def get_batch_response(self, batch_id):
+        """
+        Retrieve the response of a specific batch job.
+
+        Parameters:
+        -----------
+        batch_id : str
+            The ID of the batch job.
+
+        Returns:
+        --------
+        dict
+            The response of the batch job.
+        """
         return retireve_batch_results(self.client, batch_id)
     
 
     def plot_batch_table(self, drop_columns:Union[List[str], str] = []):
+        """
+        Display a tabulated batch jobs table, optionally dropping specified columns.
 
+        Parameters:
+        -----------
+        drop_columns : Union[List[str], str]
+            A list or string of columns to drop from the table.
+        """
         if isinstance(drop_columns, str):
             drop_columns = [drop_columns]
         
@@ -68,6 +168,21 @@ class openAI_job_manager:
 
 
     def generate(self, messages, model=None):
+        """
+        Generate a response from OpenAI's API using a given list of messages.
+
+        Parameters:
+        -----------
+        messages : list
+            A list of messages to send to the OpenAI model.
+        model : str, optional
+            The model to use for generating the response. If None, the default model is used.
+
+        Returns:
+        --------
+        str
+            The content of the response message.
+        """
         if model is None:
             model = self.model
         response = self.client.chat.completions.create(
@@ -79,8 +194,53 @@ class openAI_job_manager:
 
 
 class Generator(openAI_job_manager):
+    """
+    A subclass of openAI_job_manager to handle specific generation tasks like rationale and question generation for synthetic data.
+
+    Attributes:
+    -----------
+    default_rational_system_prompt : str
+        The default system prompt for generating rationales.
+    default_question_system_prompt : str
+        The default system prompt for generating questions.
+
+    Methods:
+    --------
+    generate_rational(questions, answers, system_prompt=None, model=None):
+        Generate rationale for a list of questions and answers.
+
+    generate_rational_batch_file(questions, answers, max_tokens=1000, system_prompt=None, model=None):
+        Generate a JSONL file for a batch request to OpenAI for rationale generation.
+
+    generate_batch_rational(questions, answers, max_tokens=1000, system_prompt=None, model=None, description='OpenAI Batch Request - Simplifine'):
+        Generate rationale for a list of questions and answers using OpenAI's batch API.
+
+    generate_questions(passages, system_prompt=None, model=None):
+        Generate questions based on a list of passages.
+
+    generate_questions_batch_file(passages, max_tokens=1000, system_prompt=None, model=None):
+        Generate a JSONL file for a batch request to OpenAI for question generation.
+
+    generate_batch_questions(passages, max_tokens=1000, system_prompt=None, model=None, description='OpenAI Batch Request - Simplifine'):
+        Generate questions for a list of passages using OpenAI's batch API.
+
+    dataset_generation_batch(batch_id):
+        Generate the dataset based on the batch_id.
+
+    read_pdf(document_path):
+        Extract and return text from a PDF document.
+    """
     def __init__(self, api_key:str='', default_model='gpt-4o-mini'):
-        
+        """
+        Initialize the Generator.
+
+        Parameters:
+        -----------
+        api_key : str
+            The API key to authenticate with OpenAI.
+        default_model : str
+            The default model to use for requests. Default is 'gpt-4o-mini'.
+        """
         super().__init__(api_key=api_key, default_model=default_model)
 
         self.default_rational_system_prompt = """You are a helpful assistant. 
@@ -104,8 +264,22 @@ class Generator(openAI_job_manager):
                           system_prompt:str=None, model:str=None):
         """
         Generate rationale for a list of questions and answers.
-        Note that this function is synchronous and will be expensive for large lists.
-        Use the generate_rational_async function for large lists.
+        
+        Parameters:
+        -----------
+        questions : List[str]
+            A list of questions for which to generate rationale.
+        answers : List[str]
+            A list of answers corresponding to the questions.
+        system_prompt : str, optional
+            The system prompt to use. If None, the default prompt is used.
+        model : str, optional
+            The model to use. If None, the default model is used.
+
+        Returns:
+        --------
+        List[str]
+            A list of generated rationales.
         """
         if model is None:
             model = self.model
@@ -127,6 +301,24 @@ class Generator(openAI_job_manager):
         """
         Generate a JSONL file for a batch request to OpenAI for rationale generation 
         based on a list of questions and answers.
+
+        Parameters:
+        -----------
+        questions : List[str]
+            A list of questions for which to generate rationale.
+        answers : List[str]
+            A list of answers corresponding to the questions.
+        max_tokens : int
+            The maximum number of tokens allowed in the response.
+        system_prompt : str, optional
+            The system prompt to use. If None, the default prompt is used.
+        model : str, optional
+            The model to use. If None, the default model is used.
+
+        Returns:
+        --------
+        tuple
+            The output file path and the file name.
         """
         if model is None:
             model = self.model
@@ -175,8 +367,26 @@ class Generator(openAI_job_manager):
     def generate_batch_rational(self, questions: List[str], answers: List[str], max_tokens: int = 1000,
                                 system_prompt: str = None, model: str = None, description: str = 'OpenAI Batch Request - Simplifine'):
         """
-        Generate rationale for a list of questions and answers.
-        This function uses openAI batches API and will be cheaper.
+        Generate rationale for a list of questions and answers using OpenAI's batch API.
+
+        Parameters:
+        -----------
+        questions : List[str]
+            A list of questions for which to generate rationale.
+        answers : List[str]
+            A list of answers corresponding to the questions.
+        max_tokens : int
+            The maximum number of tokens allowed in the response.
+        system_prompt : str, optional
+            The system prompt to use. If None, the default prompt is used.
+        model : str, optional
+            The model to use. If None, the default model is used.
+        description : str
+            A description for the batch request.
+
+        Returns:
+        --------
+        None
         """
 
         if len(questions) != len(answers):
@@ -202,6 +412,23 @@ class Generator(openAI_job_manager):
 
 
     def generate_questions(self, passages:List[str], system_prompt:str=None, model:str=None):
+        """
+        Generate questions based on a list of passages.
+
+        Parameters:
+        -----------
+        passages : List[str]
+            A list of passages for which to generate questions.
+        system_prompt : str, optional
+            The system prompt to use. If None, the default prompt is used.
+        model : str, optional
+            The model to use. If None, the default model is used.
+
+        Returns:
+        --------
+        List[str]
+            A list of generated questions.
+        """
         if model is None:
             model = self.model
         if system_prompt is None:
@@ -220,8 +447,24 @@ class Generator(openAI_job_manager):
     def generate_questions_batch_file(self, passages: List[str], max_tokens: int = 1000,
                                     system_prompt: str = None, model: str = None):
         """
-        Generate a JSONL file for a batch request to OpenAI for questions generation 
+        Generate a JSONL file for a batch request to OpenAI for question generation 
         based on a list of passages.
+
+        Parameters:
+        -----------
+        passages : List[str]
+            A list of passages for which to generate questions.
+        max_tokens : int
+            The maximum number of tokens allowed in the response.
+        system_prompt : str, optional
+            The system prompt to use. If None, the default prompt is used.
+        model : str, optional
+            The model to use. If None, the default model is used.
+
+        Returns:
+        --------
+        tuple
+            The output file path and the file name.
         """
         if model is None:
             model = self.model
@@ -270,10 +513,25 @@ class Generator(openAI_job_manager):
     def generate_batch_questions(self, passages: List[str], max_tokens: int = 1000,
                                 system_prompt: str = None, model: str = None, description: str = 'OpenAI Batch Request - Simplifine'):
         """
-        Generate rationale for a list of questions and answers.
-        This function uses openAI batches API and will be cheaper.
-        """
+        Generate questions for a list of passages using OpenAI's batch API.
 
+        Parameters:
+        -----------
+        passages : List[str]
+            A list of passages for which to generate questions.
+        max_tokens : int
+            The maximum number of tokens allowed in the response.
+        system_prompt : str, optional
+            The system prompt to use. If None, the default prompt is used.
+        model : str, optional
+            The model to use. If None, the default model is used.
+        description : str
+            A description for the batch request.
+
+        Returns:
+        --------
+        None
+        """
         output_file, file_name = self.generate_questions_batch_file(passages, max_tokens, system_prompt, model)
         batch_input_file = self.client.files.create(
         file=open(output_file, "rb"),
@@ -296,6 +554,16 @@ class Generator(openAI_job_manager):
     def dataset_generation_batch(self, batch_id):
         """
         Generate the dataset based on the batch_id.
+
+        Parameters:
+        -----------
+        batch_id : str
+            The ID of the batch job.
+
+        Returns:
+        --------
+        dict
+            A dictionary containing the generated dataset.
         """
         batch_status = self.get_batch_status(batch_id)
         if batch_status != 'completed':
@@ -326,6 +594,19 @@ class Generator(openAI_job_manager):
 
 
     def read_pdf(self, document_path):
+        """
+        Extract and return text from a PDF document.
+
+        Parameters:
+        -----------
+        document_path : str
+            The file path of the PDF document.
+
+        Returns:
+        --------
+        str
+            The extracted text from the PDF document.
+        """
         with open(document_path, 'rb') as file:
             reader = PyPDF2.PdfFileReader(file)
             text = ''
