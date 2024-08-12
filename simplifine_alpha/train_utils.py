@@ -38,7 +38,7 @@ class Client:
     """
     A client class to interact with the Simplifine API setup for GPU-cluster operations.
 
-    Attributes:
+    Args:
         api_key (str): The API key required to authenticate with the Simplifine API.
         gpu_type (str): The type of GPU to be used ('l4' or 'a100').
         url (str): The URL endpoint configured based on the selected GPU type.
@@ -59,13 +59,49 @@ class Client:
         self.wandb_config = None
 
     
-    def clm_train_cloud(self, job_name:str,
-    model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
-    do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
-    train_args:TrainingArguments=None, data:dict={}, wandb_config:wandbConfig=None, 
-    use_ddp:bool=False, use_zero:bool=False, prompt_config:PromptConfig=None
-    ):
+    def clm_train_cloud(self, 
+                        job_name: str,
+                        model_name: str, 
+                        train_args: TrainingArguments = None, 
+                        data: dict = {}, 
+                        dataset_name: str = None, 
+                        hf_token: str = '', 
+                        dataset_config_name: str = None, 
+                        data_from_hf: bool = True,
+                        do_split: bool = True, 
+                        split_ratio: float = 0.2, 
+                        use_peft: bool = False, 
+                        lora_config: LoraConfig = None, 
+                        wandb_config: wandbConfig = None, 
+                        use_ddp: bool = False, 
+                        use_zero: bool = False, 
+                        prompt_config: PromptConfig = None
+                        ):
+        """
+        Train the CLM (Conditional Language Model) on the cloud.
+
+        Args:
+            job_name (str): The name of the job.
+            model_name (str): The name of the model.
+            train_args (TrainingArguments): The training arguments. Defaults to None.
+            data (dict, optional): The data for training. Defaults to {}.
+            dataset_name (str, optional): The name of the dataset. Required if data is from Hugging Face. Defaults to None.
+            hf_token (str, optional): The Hugging Face token. Defaults to ''.
+            dataset_config_name (str, optional): The name of the dataset configuration. Defaults to None.
+            data_from_hf (bool, optional): Whether the data is from Hugging Face. Defaults to True.
+            do_split (bool, optional): Whether to split the data. Defaults to True.
+            split_ratio (float, optional): The ratio for data splitting. Defaults to 0.2.
+            use_peft (bool, optional): Whether to use PEFT. Defaults to False.
+            lora_config (LoraConfig, optional): The Lora configuration. Defaults to None.
+            wandb_config (wandbConfig, optional): The WandB configuration. Defaults to None.
+            use_ddp (bool, optional): Whether to use DDP (Distributed Data Parallel). Defaults to False.
+            use_zero (bool, optional): Whether to use Zero. Defaults to False.
+            prompt_config (PromptConfig, optional): The prompt configuration. Defaults to None.
+        """
         # client side checks
+        if train_args is None:
+            raise ValueError('Training arguements must be provided')
+        
         if use_ddp and use_zero:
             raise ValueError("Only one dist method is accepted at once.")
         
@@ -133,14 +169,48 @@ class Client:
 
         send_train_query(config, url=self.url)
 
+    def sft_train_cloud(self, 
+                            job_name: str='',
+                            model_name: str='', 
+                            sft_config: SFTConfig = None, 
+                            dataset_name: str = None, 
+                            hf_token: str = '', 
+                            dataset_config_name: str = None, 
+                            data_from_hf: bool = True,
+                            do_split: bool = True, 
+                            split_ratio: float = 0.2, 
+                            use_peft: bool = False, 
+                            lora_config: LoraConfig = None, 
+                            data: dict = {}, 
+                            wandb_config: wandbConfig = None, 
+                            use_ddp: bool = False, 
+                            use_zero: bool = False, 
+                            sft_prompt_config: sftPromptConfig = None):
+        """
+        Train the SFT (Simplified Fine-Tuning) on the cloud.
 
-    def sft_train_cloud(self, job_name:str,
-        model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
-        do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
-        sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
-        use_ddp:bool=False, use_zero:bool=False, sft_prompt_config:sftPromptConfig=None):
-
+        Args:
+            job_name (str): The name of the job. (Required)
+            model_name (str): The name of the model. (Required)
+            dataset_name (str, optional): The name of the dataset. Defaults to None.
+            hf_token (str, optional): The Hugging Face token. Defaults to ''.
+            dataset_config_name (str, optional): The name of the dataset configuration. Defaults to None.
+            data_from_hf (bool, optional): Whether the data is from Hugging Face. Defaults to True.
+            do_split (bool, optional): Whether to split the data. Defaults to True.
+            split_ratio (float, optional): The ratio for data splitting. Defaults to 0.2.
+            use_peft (bool, optional): Whether to use PEFT. Defaults to False.
+            lora_config (LoraConfig, optional): The Lora configuration. Defaults to None.
+            sft_config (SFTConfig, optional): The SFT configuration. Defaults to None.
+            data (dict, optional): The data for training. Defaults to {}.
+            wandb_config (wandbConfig, optional): The WandB configuration. Defaults to None.
+            use_ddp (bool, optional): Whether to use DDP (Distributed Data Parallel). Defaults to False.
+            use_zero (bool, optional): Whether to use Zero. Defaults to False.
+            sft_prompt_config (sftPromptConfig, optional): The SFT prompt configuration. Defaults to None.
+        """
         # client side checks
+        if sft_config is None:
+            raise ValueError('SFT config must be provided')
+        
         if use_ddp and use_zero:
             raise ValueError("Only one dist method is accepted at once.")
         
