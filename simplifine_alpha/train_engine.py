@@ -547,9 +547,9 @@ class sftPromptConfig(PromptConfig):
 
 
 def sft_train(
-    model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
+    model_name:str, sft_config:SFTConfig=None, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
     do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
-    sft_config:SFTConfig=None, data:dict={}, wandb_config:wandbConfig=None, 
+    data:dict={}, wandb_config:wandbConfig=None, 
     use_ddp:bool=False, use_zero:bool=False, sft_prompt_config:sftPromptConfig=None
 ): 
     """
@@ -561,6 +561,8 @@ def sft_train(
     -----------
     model_name : str
         The name or path of the pre-trained model to use.
+    sft_config : SFTConfig
+        Configuration object for the SFT process. Default is None.
     dataset_name : str, optional
         The name of the dataset to use for training.
     keys : list, optional
@@ -571,8 +573,6 @@ def sft_train(
         Whether to split the dataset into training and testing sets. Default is True.
     split_ratio : float, optional
         The ratio of the dataset to use for testing. Default is 0.2.
-    sft_config : SFTConfig, optional
-        Configuration object for the SFT process. Default is None.
     data : dict, optional
         Dictionary containing the dataset for training. Default is an empty dictionary.
     num_epochs : int, optional
@@ -797,8 +797,6 @@ def sft_train(
             _is_distritubed = True
             local_rank = int(os.environ['LOCAL_RANK'])
             if not dist.is_initialized():
-                print("Initializing process group for DDP")
-                # dist.init_process_group("nccl", world_size=torch.cuda.device_count())
                 # Ensure correct device and process setup
                 torch.cuda.set_device(local_rank)
                 dist.init_process_group(backend="nccl")
@@ -815,7 +813,6 @@ def sft_train(
         elif use_zero:
             _is_distritubed = True
             if not dist.is_initialized():
-                print("Initializing process group for DDP")
                 dist.init_process_group("nccl", world_size=torch.cuda.device_count())
             else:
                 print("Process group already initialized")
@@ -865,15 +862,53 @@ def sft_train(
 
 
 def clm_train(
-    model_name:str, dataset_name:str=None, hf_token:str='', dataset_config_name:str=None, data_from_hf:bool=True,
-    do_split:bool=True, split_ratio:float=0.2, use_peft:bool=False, lora_config:LoraConfig=None, 
-    train_args:TrainingArguments=None, data:dict={}, wandb_config:wandbConfig=None, 
-    use_ddp:bool=False, use_zero:bool=False, prompt_config:PromptConfig=None
-    ):
+    model_name: str, 
+    train_args: TrainingArguments = None, 
+    dataset_name: str = None, 
+    hf_token: str = '', 
+    dataset_config_name: str = None, 
+    data_from_hf: bool = True,
+    do_split: bool = True, 
+    split_ratio: float = 0.2, 
+    use_peft: bool = False, 
+    lora_config: LoraConfig = None, 
+    data: dict = {}, 
+    wandb_config: wandbConfig = None, 
+    use_ddp: bool = False, 
+    use_zero: bool = False, 
+    prompt_config: PromptConfig = None
+):
+    """
+    Trains a causal language model.
+
+    Args:
+        model_name (str): The name or path of the pre-trained model.
+        train_args (TrainingArguments): The training arguments. Defaults to None.
+        dataset_name (str, optional): The name of the dataset. Required if `data_from_hf` is True. Defaults to None.
+        hf_token (str, optional): The Hugging Face token. Defaults to ''.
+        dataset_config_name (str, optional): The name of the dataset configuration. Defaults to None.
+        data_from_hf (bool, optional): Whether the data is from Hugging Face datasets. Defaults to True.
+        do_split (bool, optional): Whether to split the dataset into train and test sets. Defaults to True.
+        split_ratio (float, optional): The ratio to split the dataset if `do_split` is True. Defaults to 0.2.
+        use_peft (bool, optional): Whether to use the PEFT model. Defaults to False.
+        lora_config (LoraConfig, optional): The configuration for the PEFT model. Defaults to None.
+        data (dict, optional): The data dictionary. Required if `data_from_hf` is False. Defaults to {}.
+        wandb_config (wandbConfig, optional): The configuration for Weights & Biases integration. Defaults to None.
+        use_ddp (bool, optional): Whether to use Distributed Data Parallel (DDP) for multi-GPU training. Defaults to False.
+        use_zero (bool, optional): Whether to use ZeRO optimization for multi-GPU training. Defaults to False.
+        prompt_config (PromptConfig, optional): The configuration for the prompt. Defaults to None.
+    """
+
     # Ensure no default process group exists
     if dist.is_initialized():
         print("Destroying existing process group")
         dist.destroy_process_group()
+    
+    if model_name is None:
+        raise ValueError('Model name must be provided')
+    
+    if train_args is None:
+        raise ValueError('SFT config must be provided')
     
     if use_ddp and use_zero:
         raise ValueError("Only one dist method is accepted at once.")
@@ -1024,7 +1059,6 @@ def clm_train(
         elif use_zero:
             _is_distritubed = True
             if not dist.is_initialized():
-                print("Initializing process group for DDP")
                 dist.init_process_group("nccl", world_size=torch.cuda.device_count())
             else:
                 print("Process group already initialized")
