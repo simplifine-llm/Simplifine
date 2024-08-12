@@ -20,6 +20,7 @@ from typing import List, Union
 import asyncio
 import PyPDF2
 import os
+from dotenv import load_dotenv
 import json
 import uuid
 from logger import *
@@ -75,6 +76,11 @@ class openAI_job_manager:
         default_model : str
             The default model to use for requests. Default is 'gpt-4o-mini'.
         """
+        load_dotenv()
+        if api_key == '':
+            api_key = os.getenv('OPENAI_API_KEY')
+        if api_key == '':
+            raise ValueError("The API key is not provided. Either provide this key or set it in the environment variable with the name 'OPENAI_API_KEY'.")
         self.client = OpenAI(api_key=api_key)
         self.client_async = AsyncOpenAI(api_key=api_key)
         self.model = default_model
@@ -613,3 +619,4 @@ class Generator(openAI_job_manager):
             for page in range(reader.numPages):
                 text += reader.getPage(page).extractText()
         return text
+

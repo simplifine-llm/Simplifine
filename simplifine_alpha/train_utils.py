@@ -179,6 +179,13 @@ class Client:
         # making sure invalid fields are not passed to the server
         valid_fields = {f.name for f in fields(LoraConfig)}
         lora_config_dict = {k: v for k, v in lora_config_dict.items() if k in valid_fields}
+        # known bug when passing target_modules to the server, fix is below
+        def convert_sets_to_lists(d):
+            for k, v in d.items():
+                if isinstance(v, set):
+                    d[k] = list(v)
+            return d
+        lora_config_dict = convert_sets_to_lists(lora_config_dict)
 
         valid_fields = {f.name for f in fields(SFTConfig)}
         sft_config_dict = {k: v for k, v in sft_config_dict.items() if k in valid_fields}
