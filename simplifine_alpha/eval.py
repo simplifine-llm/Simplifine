@@ -33,8 +33,6 @@ from sentence_transformers.util import cos_sim
 from utils import chunk_text_by_words
 
 
-
-# TODO: attend to logging and make it streamlined.
 class eval_gen:
     def __init__(self):
 

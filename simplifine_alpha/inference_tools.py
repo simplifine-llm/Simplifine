@@ -35,6 +35,20 @@ class GenerationConfig:
 
 
 def parse_sft_prompt(generate_config:GenerationConfig, data:dict, tokenizer:AutoTokenizer):
+    """
+    Function to parse the prompt for the SFT training type.
+    Make sure to have the prompt_template and response_template in the generate_config.
+    args:
+        generate_config: GenerationConfig object
+            the GenerationConfig object containing the prompt and response templates
+        data: dict
+            The data dictionary containing the keys to be used in the prompt template
+        tokenizer: AutoTokenizer object
+            The toeknizer object for the model
+    returns:
+        formatted_prompts: list
+        expected_responses: list
+    """
     _is_chat = False
     if tokenizer.chat_template:
         # dummy messages to extract chat tokens
@@ -85,6 +99,21 @@ def parse_sft_prompt(generate_config:GenerationConfig, data:dict, tokenizer:Auto
 
 def generate_from_pretrained(model:AutoModelForCausalLM, tokenizer:AutoTokenizer, generate_confg:GenerationConfig,
                              data:dict={}):
+    """
+    Function to generate text from a pretrained model.
+    args:
+        model: AutoModelForCausalLM object
+            The pretrained model object
+        tokenizer: AutoTokenizer object
+            The tokenizer object
+        generate_config: GenerationConfig object
+            The GenerationConfig object containing the generation parameters
+        data: dict
+            The data dictionary containing the keys to be used in the prompt template
+    returns:
+        generated_text: list
+            The list of generated texts
+    """
     generated_text = []
     if generate_confg.train_type == 'sft':
         formatted_prompt, expected_outputs = parse_sft_prompt(generate_confg, data, tokenizer)

@@ -35,6 +35,15 @@ class wandbConfig:
 
 
 class Client:
+    """
+    A client class to interact with the Simplifine API setup for GPU-cluster operations.
+
+    Attributes:
+        api_key (str): The API key required to authenticate with the Simplifine API.
+        gpu_type (str): The type of GPU to be used ('l4' or 'a100').
+        url (str): The URL endpoint configured based on the selected GPU type.
+        wandb_config (optional): Configuration for Weights and Biases, initialized as None.
+    """
     def __init__(self, api_key:str='', gpu_type:str=''):
         self.api_key = api_key
         if api_key == '':

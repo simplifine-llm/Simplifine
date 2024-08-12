@@ -184,11 +184,3 @@ def stop_job(api_key:str='', job_id:str='', url:str=''):
         return response.json()
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
-
-if __name__ == '__main__':
-    # Example usage of the functions
-    # Set the URL of the server
-    url = "http://18.189.220.250:5000"
-    api_key = 'SimpTest'
-    status = get_company_status(api_key, url)
-    print(status)

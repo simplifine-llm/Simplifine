@@ -173,12 +173,7 @@ def hf_finetune_llm_qa(model_name:str, dataset_name:str='',
     formatting_func=formatting_prompts_func,
     data_collator=collator
     )
-    print('\n######################## EVAL PRE-TRAIN ########################\n')
-    print(trainer.evaluate())
-    print('\n######################## TRAIN ########################\n')
     trainer.train()
-    print('\n######################## EVAL POST-TRAIN ########################\n')
-    print(trainer.evaluate())
 
 
 
@@ -609,6 +604,7 @@ def sft_train(
     use_chat_template = sft_prompt_config.use_chat_template
     system_message_key = sft_prompt_config.system_message_key
     system_message = sft_prompt_config.system_message
+
     # Ensure no default process group exists
     if dist.is_initialized():
         print("Destroying existing process group")
@@ -635,13 +631,15 @@ def sft_train(
     # initialize the training arguments
     if sft_config is None:
         raise ValueError('SFT config must be provided')
-    
-    if use_ddp and sft_config.gradient_checkpointing:
-        print('[WARNING]: Gradient checkpointing is not supported with DDP. Disabling gradient checkpointing.')
-        sft_config.gradient_checkpointing = False
 
     # initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
+
+    if use_chat_template and tokenizer.chat_template is None:
+        print('[WARNING] you passed use_chat_template as True but the tokenizer does not have chat template')
+        print('Disabling chat template')
+        use_chat_template = False
+
     if tokenizer.pad_token is None:
         if new_padding_token:
             tokenizer.pad_token = new_padding_token
@@ -737,11 +735,11 @@ def sft_train(
         if not output_texts:
             return {'input_ids': [], 'attention_mask': []}
     
-        tokenized_output = tokenizer(output_texts, truncation=True, padding='max_length', add_special_tokens=True, max_length=tokenizer.model_max_length)
+        tokenized_output = tokenizer(output_texts, truncation=True, padding='max_length', add_special_tokens=True)
 
         return tokenized_output
 
-    if tokenizer.chat_template:
+    if use_chat_template:
         collator = DataCollatorForCompletionOnlyLM(chat_response_temp, tokenizer=tokenizer)
     else:
         collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
@@ -752,11 +750,12 @@ def sft_train(
     # initialize the peft config
     if use_peft:
         if lora_config is None:
+            print('[WARNING]: Using PEFT but no PEFT config provided. Using default config.')
             target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",]
 
             lora_config = LoraConfig(
-                r=16,
-                lora_alpha=32,
+                r=32,
+                lora_alpha=64,
                 lora_dropout=0.05,
                 bias="none",
                 task_type="CAUSAL_LM",
@@ -766,19 +765,29 @@ def sft_train(
     # initialize the model
     device, device_name = init_device()
     if device_name == 'cuda':
-        model = AutoModelForCausalLM.from_pretrained(model_name, 
-                                                 token = hf_token)
+        # check if gpu type is a100
+        if 'A100' in torch.cuda.get_device_name():
+            model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                    token = hf_token,
+                                                    torch_dtype=torch.bfloat16,
+                                                    attn_implementation="flash_attention_2")
+        else:
+            model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                    token = hf_token,
+                                                    torch_dtype=torch.bfloat16)
     else:
         model = AutoModelForCausalLM.from_pretrained(model_name, 
                                                  token = hf_token)
     model.resize_token_embeddings(len(tokenizer))
-
     # if peft is enabled, use the peft model
     if use_peft:
         model = get_peft_model(model, peft_config=lora_config)
     
     if sft_config.deepspeed is None and use_zero:
-        raise ValueError('Zero optimization requires a DeepSpeed config')
+        print('[WARNING] Zero optimization requires a DeepSpeed config, resoring to default config')
+        script_path = os.path.dirname(os.path.realpath(__file__))
+        deepspeed_config_path = os.path.join(script_path, 'zero', 'deepspeed_config.json')
+        sft_config.deepspeed = deepspeed_config_path
     
     _is_distritubed = False
     if torch.cuda.device_count() > 1:
@@ -786,17 +795,23 @@ def sft_train(
             raise ValueError('Zero optimization and DDP cannot be used together')
         if use_ddp:
             _is_distritubed = True
+            local_rank = int(os.environ['LOCAL_RANK'])
             if not dist.is_initialized():
                 print("Initializing process group for DDP")
-                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+                # dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+                # Ensure correct device and process setup
+                torch.cuda.set_device(local_rank)
+                dist.init_process_group(backend="nccl")
             else:
                 print("Process group already initialized")
 
             sft_config.ddp_find_unused_parameters=False
             rank = dist.get_rank()
-            device_id = rank % torch.cuda.device_count()
-            model = model.to(device_id)
-            model = DDP(model, device_ids=[device_id])
+            # Below would be necessary to make gradient checkpointing work with DDP
+            if sft_config.gradient_checkpointing:
+                model.enable_gradient_checkpointing(gradient_checkpointing_kwargs={"use_reentrant": False})
+            model.to(local_rank)
+            model = DDP(model, device_ids=[local_rank])
         elif use_zero:
             _is_distritubed = True
             if not dist.is_initialized():
@@ -808,6 +823,8 @@ def sft_train(
         else:
             # user warning not utilizing DDP or ZeRO for multi-gpu setup
             print('[WARNING]: multiple GPUs detected, but not using DDP or ZeRO')
+            # local_rank = int(os.environ['LOCAL_RANK'])
+            model.to(device)
     else:
         model.to(device)
         distributed = False
@@ -815,7 +832,6 @@ def sft_train(
             sft_config.fp16 = False
             sft_config.bf16 = False
         
-    print(f"train data set is: {promptTokenizedDataset['train']}, eval dataset is {promptTokenizedDataset['test']}")
     if do_split:
         trainer = SFTTrainer(
         model,
@@ -875,9 +891,9 @@ def clm_train(
     if train_args is None:
         raise ValueError('SFT config must be provided')
     
-    if use_ddp and train_args.gradient_checkpointing:
-        print('[WARNING]: Gradient checkpointing is not supported with DDP. Disabling gradient checkpointing.')
-        train_args.gradient_checkpointing = False
+    if prompt_config is None:
+        print('[WARNING]: No prompt config provided. Using default config.')
+        prompt_config = PromptConfig()
 
     # initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, token = hf_token)
@@ -887,7 +903,6 @@ def clm_train(
         else:
             tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
-
 
     train_args.remove_unused_columns=False
     if data_from_hf:
@@ -931,9 +946,14 @@ def clm_train(
 
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-    tokenized_datasets = raw_datasets.map(
-    tokenize, batched=True, remove_columns=raw_datasets['train'].column_names
-    )
+    if do_split:
+        tokenized_datasets = raw_datasets.map(
+        tokenize, batched=True, remove_columns=raw_datasets['train'].column_names
+        )
+    else:
+        tokenized_datasets = raw_datasets.map(
+        tokenize, batched=True, remove_columns=raw_datasets.column_names
+        )
     
     if train_args.report_to == ['wandb']:
         wandb_api_key = wandb_config.api_key
@@ -941,7 +961,6 @@ def clm_train(
         config = wandb_config.config
         wandb.login(key=wandb_api_key)
         wandb.init(project=project, config=config)
-
 
     # initialize the peft config
     if use_peft:
@@ -960,8 +979,16 @@ def clm_train(
     # initialize the model
     device, device_name = init_device()
     if device_name == 'cuda':
-        model = AutoModelForCausalLM.from_pretrained(model_name, 
-                                                 token = hf_token)
+        # check if gpu type is a100
+        if 'A100' in torch.cuda.get_device_name():
+            model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                    token = hf_token,
+                                                    torch_dtype=torch.bfloat16,
+                                                    attn_implementation="flash_attention_2")
+        else:
+            model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                    token = hf_token,
+                                                    torch_dtype=torch.bfloat16)
     else:
         model = AutoModelForCausalLM.from_pretrained(model_name, 
                                                  token = hf_token)
@@ -977,17 +1004,23 @@ def clm_train(
             raise ValueError('Zero optimization and DDP cannot be used together')
         if use_ddp:
             _is_distritubed = True
+            local_rank = int(os.environ['LOCAL_RANK'])
             if not dist.is_initialized():
                 print("Initializing process group for DDP")
-                dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+                # dist.init_process_group("nccl", world_size=torch.cuda.device_count())
+                # Ensure correct device and process setup
+                torch.cuda.set_device(local_rank)
+                dist.init_process_group(backend="nccl")
             else:
                 print("Process group already initialized")
 
             train_args.ddp_find_unused_parameters=False
             rank = dist.get_rank()
-            device_id = rank % torch.cuda.device_count()
-            model = model.to(device_id)
-            model = DDP(model, device_ids=[device_id])
+            # Below would be necessary to make gradient checkpointing work with DDP
+            if train_args.gradient_checkpointing:
+                model.enable_gradient_checkpointing(gradient_checkpointing_kwargs={"use_reentrant": False})
+            model.to(local_rank)
+            model = DDP(model, device_ids=[local_rank])
         elif use_zero:
             _is_distritubed = True
             if not dist.is_initialized():
@@ -999,6 +1032,8 @@ def clm_train(
         else:
             # user warning not utilizing DDP or ZeRO for multi-gpu setup
             print('[WARNING]: multiple GPUs detected, but not using DDP or ZeRO')
+            # local_rank = int(os.environ['LOCAL_RANK'])
+            model.to(device)
     else:
         model.to(device)
         distributed = False
@@ -1033,7 +1068,7 @@ def clm_train(
     trainer.train()
     trainer.save_model(output_dir_final)
     
-    if use_ddp:
+    if _is_distritubed:
       dist.destroy_process_group()
 
 
