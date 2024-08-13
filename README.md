@@ -1,43 +1,47 @@
 # 🌟 Simplifine 🌟
 
-**The easiest, fully open-source LLM finetuning library!**
+## Super-Easy, Open-Source Cloud-Based LLM Finetuning
 
-Simplifine lets you invoke LLM finetuning with just one line of code using any Hugging Face dataset or model.
+**Try here –**  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb)
 
-## Updates
-## 🔄 Updates
-**v0.0.8 (2024-08-08)**
-- **Bug Fixes:** Code clean up and trainer fixes.
-- **New Feature:** Ability to define more complex configuration files for the trainer.
-- **Documentation:** -New examples on training cloud and training a fake news detector.
-- **COMPREHENSIVE UPDATE of DOCUMENTATIONS on [docs.simplifine.com](https://docs.simplifine.com).**
+### **Get a FREE API Key for  FINETUNING [HERE](https://app.simplifine.com/#/signup)**
 
-**v0.0.71 (2024-07-25)**
-- **Bug Fixes:** Resolved issues that prevented the library from loading on certain configurations.
-- **New Feature:** Added support for installing directly from git. Added support for Hugging Face API Tokens to access restricted models.
-- **Documentation:** Updated examples.
 
-## 🚀 Features
+Simplifine streamlines LLM finetuning on any dataset or model with one simple command, handling all infrastructure, job management, cloud model storage, and inference.
 
-- **Supervised Fine Tuning** 🧑‍🏫
-- **Question-Answer Finetuning** ❓➕
-- **Contrastive Loss for Embedding Tasks** 🌌
-- **Multi-label Classification Finetuning** 🏷️
-- **WandB Logging** 📊
-- **In-built Evaluation Tools** 📈
-- **Automated Finetuning Parameters** 🤖
-- **State-of-the-art Optimization Techniques (DeepSpeed, FDSP)** 🏎️
+## Features
+- **🚀 Easy Cloud-Based LLM Finetuning:** Fine-tune any LLM with just one command.
+
+- **☁️ Seamless Cloud Integration:** Automatically manage the downloading, storing, and running of models directly from the cloud.
+
+- **🤖 Built-in AI Assistance:** Get help with hyperparameter selection, synthetic dataset generation, and data quality checks.
+
+- **🔄 On-Device to Cloud Switching:** Add a simple decorator to transition from local to cloud-based training.
+
+- **⚡ Auto-Optimization:** Automatically optimizes model and data parallelization Unsloth (*coming soon!*), Deepspeed ✅ and FDSP ✅
+
+- **📊 Custom Evaluation Support:** Use the built-in LLM for evaluations functions or import your own custom evaluation metrics.
+
+- **💼 Community Support:** Asking any support questions on the Simplifine Community Discord.
+
+- **🏅 Trusted by Leading Institutions:** Research labs at the University of Oxford rely on Simplifine for their LLM finetuning needs.
+
+---
+
+## 🏁 Quickstart
+
+Get started here > [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb)
+
+
+## 📚 Documentation
+
+Find our full documentation at [docs.simplifine.com](http://docs.simplifine.com).
 
 ## 📦 Installation
 
+Installing from PyPI
 ```bash
 pip install simplifine-alpha
-```
-
-Or you can install the package from source. To do so, simply download the content of this repository and navigate to the installation folder and run the following command:
-
-```bash
-pip install .
 ```
 
 You can also directly install from github using the following command:
@@ -45,27 +49,35 @@ You can also directly install from github using the following command:
 pip install git+https://github.com/simplifine-llm/Simplifine.git
 ```
 
-## 🏁 Quickstart
-
-For a more comprehensive example, see this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb) in the examples folder:
-
-Further examples on how to use train engine are also located in the examples folder.
-
 ## 🤝 Contributing
 
-We are looking for contributors! Please send an email to [founders@simplifine.com](mailto:founders@simplifine.com) to get onboarded, or add your name to the waitlist on [www.simplifine.com](http://www.simplifine.com).
+We are looking for contributors! Please send an email to [founders@simplifine.com](mailto:founders@simplifine.com) to get onboarded! We welcome all types of contributions.
 
 ## 📄 License
 
 Simplifine is licensed under the GNU General Public License Version 3. See the LICENSE file for more details.
 
-## 📚 Documentation
-
-Find our full documentation at [docs.simplifine.com](http://docs.simplifine.com).
 
 ## 💬 Support
 
 If you have any suggestions for new features you'd like to see implemented, please raise an issue—we will work hard to make it happen ASAP! For any other questions, feel free to contact us at [founders@simplifine.com](mailto:founders@simplifine.com).
+
+
+
+## 🔄 Updates
+
+#### **v0.0.8**
+- **🐛 Bug Fixes:** Streamlined code and resolved trainer-related issues for smoother operation.
+- **✨ New Feature:** Introduced support for defining more complex configuration files, enhancing the flexibility of the trainer.
+- **📚 Documentation:** Added new examples, including tutorials on cloud-based training and creating a fake news detector.
+- **🔗 Updated Documentation:** Check out the latest docs at [docs.simplifine.com](https://docs.simplifine.com).
+
+#### **v0.0.71**
+- **🐛 Bug Fixes:** Fixed issues that caused loading failures on certain configurations, ensuring broader compatibility.
+- **✨ New Feature:** Enabled direct installation from Git and added support for Hugging Face API Tokens, allowing access to restricted models.
+- **📚 Documentation:** Refreshed examples to reflect the latest features.
+
+
 
 ## ⛮ General Compute Considerations
 
@@ -86,7 +98,7 @@ We currently support both DistributedDataParallel (DDP) and ZeRO from DeepSpeed.
 2. **LLaMA-3-8b model with LoRA adapters**: Usually fine with DDP on A100s.
 3. **GPT-2 with 16-bit precision**: Use DDP.
 
-## 🪲 FAQs and Bugs
+## 🪲 FAQs
 
 **Issue: RuntimeError: Error building extension 'cpu_adam' python dev**
 
