@@ -4,7 +4,7 @@
 
 **Try here –**  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb)
 
-### **Get a FREE API Key for  FINETUNING [HERE](https://app.simplifine.com/#/signup)**
+### **Get a FREE API Key for  FINETUNING [HERE](https://www.simplifine.com/api-key-interest)**
 
 
 Simplifine streamlines LLM finetuning on any dataset or model with one simple command, handling all infrastructure, job management, cloud model storage, and inference.
@@ -57,8 +57,11 @@ We are looking for contributors! Please send an email to [founders@simplifine.co
 
 Simplifine is licensed under the GNU General Public License Version 3. See the LICENSE file for more details.
 
+<<<<<<< HEAD
+=======
 ## 📚 Documentation
 MAJOR OVERHAUL OF DOCUMENTATION IN THE WORKS (Done by 11th Aug 2024). In the meantime, please use this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb) here to learn how to use the model.
+>>>>>>> 3bd68be2d8b6173abf701764e497240bff577925
 
 ## 💬 Support
 
