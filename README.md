@@ -2,7 +2,9 @@
 
 ## Super-Easy, Open-Source Cloud-Based LLM Finetuning
 
-**Try here –**  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb)
+**Try here**  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb)
+
+**Join our Discord** [![Join our Discord](https://img.shields.io/badge/Join%20our%20Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/vvJ6A7MrMv)
 
 ### **Get a FREE API Key for  FINETUNING [HERE](https://www.simplifine.com/api-key-interest)**
 
@@ -51,21 +53,19 @@ pip install git+https://github.com/simplifine-llm/Simplifine.git
 
 ## 🤝 Contributing
 
-We are looking for contributors! Please send an email to [founders@simplifine.com](mailto:founders@simplifine.com) to get onboarded! We welcome all types of contributions.
+We are looking for contributors! Join the `contributors` thread on our Discord:  [![Join our Discord](https://img.shields.io/badge/Join%20our%20Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/vvJ6A7MrMv)
+
 
 ## 📄 License
 
 Simplifine is licensed under the GNU General Public License Version 3. See the LICENSE file for more details.
 
-<<<<<<< HEAD
-=======
-## 📚 Documentation
-MAJOR OVERHAUL OF DOCUMENTATION IN THE WORKS (Done by 11th Aug 2024). In the meantime, please use this [notebook](https://github.com/simplifine-llm/Simplifine/blob/main/examples/cloud_quickstart.ipynb) here to learn how to use the model.
->>>>>>> 3bd68be2d8b6173abf701764e497240bff577925
-
 ## 💬 Support
+For all feature-requests, bugs and support, **join our Discord!** [![Join our Discord](https://img.shields.io/badge/Join%20our%20Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/vvJ6A7MrMv)
 
-If you have any suggestions for new features you'd like to see implemented, please raise an issue—we will work hard to make it happen ASAP! For any other questions, feel free to contact us at [founders@simplifine.com](mailto:founders@simplifine.com).
+If you have any suggestions for new features you'd like to see implemented, please raise an issue—we will work hard to make it happen ASAP! 
+
+For any other questions, feel free to contact us at [founders@simplifine.com](mailto:founders@simplifine.com).
 
 
 
