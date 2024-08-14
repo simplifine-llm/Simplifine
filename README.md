@@ -9,7 +9,7 @@
 ### **Get a FREE API Key for  FINETUNING [HERE](https://www.simplifine.com/api-key-interest)**
 
 
-Simplifine streamlines LLM finetuning on any dataset or model with one simple command, handling all infrastructure, job management, cloud model storage, and inference.
+Simplifine streamlines LLM finetuning on any dataset or model with one simple command, handling all infrastructure, job management, cloud storage, and inference.
 
 ## Features
 - **🚀 Easy Cloud-Based LLM Finetuning:** Fine-tune any LLM with just one command.
