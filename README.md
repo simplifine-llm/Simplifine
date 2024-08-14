@@ -20,7 +20,7 @@ Simplifine streamlines LLM finetuning on any dataset or model with one simple co
 
 - **🔄 On-Device to Cloud Switching:** Add a simple decorator to transition from local to cloud-based training.
 
-- **⚡ Auto-Optimization:** Automatically optimizes model and data parallelization Unsloth (*coming soon!*), Deepspeed ✅ and FDSP ✅
+- **⚡ Auto-Optimization:** Automatically optimizes model and data parallelization (*coming soon!*), Deepspeed ✅ and FDSP ✅
 
 - **📊 Custom Evaluation Support:** Use the built-in LLM for evaluations functions or import your own custom evaluation metrics.
 
